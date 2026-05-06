@@ -34,11 +34,12 @@ jobs:
           git config user.email "ci@github.com"
           git config user.name "GitHub Actions"
           VERSION=$(node -p "require('./package.json').version")
-          sed -i "s/version: '[^']*', \/\/ x-release-please-version/version: '${VERSION}-dev', \/\/ x-release-please-version/" src/utils/manifest.ts
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          sed -i "s/version: '[^']*', \/\/ x-release-please-version/version: '${VERSION}-dev+${SHORT_SHA}', \/\/ x-release-please-version/" src/utils/manifest.ts
           npm run build
           git remote add beamup-dev dokku@a.baby-beamup.club:87d6a6ef6b58/webstreamrmbg-dev
           git add src/utils/manifest.ts dist/ beamup-host.json --force
-          git commit -m "ci: build for unstable deploy (v${VERSION}-dev)" || true
+          git commit -m "ci: build for unstable deploy (v${VERSION}-dev+${SHORT_SHA})" || true
           git push beamup-dev HEAD:main --force
       - name: Verify deployment
         run: |
