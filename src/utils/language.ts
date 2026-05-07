@@ -39,7 +39,7 @@ const countryCodeMap: Record<CountryCode, { language: string; flag: string; iso6
   sk: { language: 'Slovak', flag: '🇸🇰', iso639: 'slk' },
   sl: { language: 'Slovenian', flag: '🇸🇮', iso639: 'slv' },
   sr: { language: 'Serbian', flag: '🇷🇸', iso639: 'srp' },
-  ta: { language: 'Tamil', flag: '🇮🇳', iso639: 'tal' },
+  ta: { language: 'Tamil', flag: '🇮🇳', iso639: 'tam' },
   te: { language: 'Telugu', flag: '🇮🇳', iso639: 'tel' },
   th: { language: 'Thai', flag: '🇹🇭', iso639: 'tha' },
   tr: { language: 'Turkish', flag: '🇹🇷', iso639: 'tur' },

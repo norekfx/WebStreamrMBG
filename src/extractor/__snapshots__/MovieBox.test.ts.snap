@@ -193,7 +193,7 @@ exports[`MovieBox MP4 format field without .mp4 in URL 1`] = `
 exports[`MovieBox No streams available 1`] = `
 [
   {
-    "error": [Error: Error],
+    "error": [Error: Invalid JSON response from https://h5-api.aoneroom.com/wefeed-h5api-bff/subject/download?subjectId=9999999999999999999&se=0&ep=0&detailPath=notfound-abc123],
     "format": "unknown",
     "isExternal": true,
     "label": "MovieBox",

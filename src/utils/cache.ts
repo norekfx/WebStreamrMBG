@@ -22,9 +22,10 @@ const scheduleKeyvSqliteCleanup = (keyvSqlite: KeyvSqlite): void => {
     const db = new sqlite3.Database(filename);
 
     db.serialize(() => {
-      db.run('DELETE FROM keyv WHERE json_extract(value, \'$.expires\') <= (strftime(\'%s\', \'now\') * 1000)');
+      db.run('DELETE FROM keyv WHERE json_extract(value, \'$.expires\') <= (strftime(\'%s\', \'now\') * 1000)', () => {
+        db.close();
+      });
     });
-    db.close();
   }, 60 * 60 * 1000); // every hour
 };
 

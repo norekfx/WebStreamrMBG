@@ -131,7 +131,9 @@ export class Fetcher {
 
     const response = await this.queuedFetch(ctx, url, newRequestConfig);
     if (response.status >= 300 && response.status < 400) {
-      return await this.getFinalRedirectUrl(ctx, new URL(response.headers['location']), newRequestConfig, maxCount, (count ?? 0) + 1);
+      const location = response.headers['location'];
+      if (!location) return url;
+      return await this.getFinalRedirectUrl(ctx, new URL(location, url.href), newRequestConfig, maxCount, (count ?? 0) + 1);
     }
 
     return url;
@@ -146,7 +148,11 @@ export class Fetcher {
       ...requestConfig,
     };
 
-    return JSON.parse(await this.text(ctx, url, jsonRequestConfig));
+    try {
+      return JSON.parse(await this.text(ctx, url, jsonRequestConfig));
+    } catch {
+      throw new Error(`Invalid JSON response from ${url.href}`);
+    }
   }
 
   protected async fetchWithTimeout(ctx: Context, url: URL, requestConfig?: CustomRequestConfig, tryCount = 0): Promise<AxiosResponse> {
@@ -381,9 +387,10 @@ export class Fetcher {
       const retryAfter = parseInt(`${response.headers['retry-after']}`);
       if (!isNaN(retryAfter)) {
         await this.rateLimitedCache.set<true>(url.host, true, retryAfter * 1000);
+        throw new TooManyRequestsError(url, retryAfter);
       }
 
-      throw new TooManyRequestsError(url, retryAfter);
+      throw new TooManyRequestsError(url, 0);
     }
 
     throw new HttpError(url, response.status, response.statusText, response.headers);

@@ -3,7 +3,7 @@
 exports[`Voe charlestoughrace.com custom domain 1`] = `
 [
   {
-    "error": [Error: Error: getaddrinfo ENOTFOUND mediaflow.test.org],
+    "error": [Error: Invalid JSON response from https://mediaflow.test.org/extractor/video?host=Voe&api_password=test&d=https%3A%2F%2Fcharlestoughrace.com%2Flbeqm6ofmauq&h_referer=https%3A%2F%2Fcharlestoughrace.com%2Flbeqm6ofmauq],
     "format": "unknown",
     "isExternal": true,
     "label": "VOE (MFP)",

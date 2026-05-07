@@ -60,7 +60,7 @@ export class FetcherMock extends Fetcher {
 
     const response = await this.fetch(ctx, url, newRequestConfig);
     if (response.headers['location']) {
-      return await this.getFinalRedirectUrl(ctx, new URL(response.headers['location']), newRequestConfig, maxCount, (count ?? 0) + 1);
+      return await this.getFinalRedirectUrl(ctx, new URL(response.headers['location'], url.href), newRequestConfig, maxCount, (count ?? 0) + 1);
     }
 
     return url;

@@ -41,7 +41,7 @@ exports[`Vidzee Inception (movie) 1`] = `
 exports[`Vidzee returns empty for empty URL response 1`] = `
 [
   {
-    "error": [Error: Error],
+    "error": [Error: Invalid JSON response from https://player.vidzee.wtf/api/server?id=88888&sr=4],
     "format": "unknown",
     "isExternal": true,
     "label": "VidZee",
@@ -57,7 +57,7 @@ exports[`Vidzee returns empty for empty URL response 1`] = `
 exports[`Vidzee returns empty for server error response 1`] = `
 [
   {
-    "error": [Error: Error],
+    "error": [Error: Invalid JSON response from https://player.vidzee.wtf/api/server?id=99999&sr=4],
     "format": "unknown",
     "isExternal": true,
     "label": "VidZee",
