@@ -71,7 +71,13 @@ describe('contextFromRequest', () => {
 
     const ctx = contextFromRequestAndResponse(req as unknown as Request, res as unknown as Response);
     // beamup-host.json provides the host when available, otherwise falls back to req.host
-    expect(['87d6a6ef6b58-webstreamrmbg.baby-beamup.club', 'truncated-app-name']).toContain(ctx.hostUrl.hostname);
+    let beamupHostname: string | undefined;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      beamupHostname = (require('../../beamup-host.json') as { host?: string }).host?.replace(/^\/\//, '');
+    } catch { /* file may not exist */ }
+    const expected = beamupHostname ? [beamupHostname, 'truncated-app-name'] : ['truncated-app-name'];
+    expect(expected).toContain(ctx.hostUrl.hostname);
 
     if (originalHost) process.env['HOST'] = originalHost;
   });

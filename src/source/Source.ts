@@ -16,8 +16,8 @@ const sourceResultCache = new Cacheable({
   stats: true,
 });
 
-const DOMAINS_JSON_URL = 'https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json';
-const DOMAINS_JSON_TTL = 15 * 60 * 1000; // 15 minutes
+const DOMAINS_JSON_URL = 'https://raw.githubusercontent.com/Anshu78780/json/main/providers.json';
+const DOMAINS_JSON_TTL = 4 * 60 * 60 * 1000; // 4 hours
 
 export abstract class Source {
   public abstract readonly id: string;
@@ -39,12 +39,12 @@ export abstract class Source {
   protected abstract handleInternal(ctx: Context, type: ContentType, id: Id): Promise<(SourceResult[])>;
 
   private static baseUrlCache = new Map<string, { url: string; ts: number }>();
-  private static readonly BASE_URL_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+  private static readonly BASE_URL_CACHE_TTL = 4 * 60 * 60 * 1000; // 4 hours
 
-  private static deadDomains = new Map<string, number>();
-  private static readonly DEAD_DOMAIN_TTL = 24 * 60 * 60 * 1000; // 24 hours
+  protected static deadDomains = new Map<string, number>();
+  protected static readonly DEAD_DOMAIN_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
-  private static domainsJsonCache: Record<string, string> | null = null;
+  private static domainsJsonCache: Record<string, { name: string; url: string }> | null = null;
   private static domainsJsonTs = 0;
 
   public static stats() {
@@ -101,8 +101,24 @@ export abstract class Source {
 
     const domainFromJson = await this.fetchDomainFromJson(domainKey, fetcher, ctx);
     if (domainFromJson) {
-      Source.baseUrlCache.set(domainKey, { url: domainFromJson, ts: Date.now() });
-      return new URL(domainFromJson);
+      const jsonHostname = (() => {
+        try {
+          return new URL(domainFromJson).hostname;
+        } catch {
+          return '';
+        }
+      })();
+      const diedAt = jsonHostname ? Source.deadDomains.get(jsonHostname) : undefined;
+      const isKnownDead = diedAt && Date.now() - diedAt < Source.DEAD_DOMAIN_TTL;
+
+      if (!isKnownDead && await this.isDomainAlive(ctx, fetcher, domainFromJson)) {
+        Source.baseUrlCache.set(domainKey, { url: domainFromJson, ts: Date.now() });
+        return new URL(domainFromJson);
+      }
+
+      if (!isKnownDead && jsonHostname) {
+        Source.deadDomains.set(jsonHostname, Date.now());
+      }
     }
 
     return this.raceCandidates(ctx, fetcher, fallbackCandidates, domainKey);
@@ -113,18 +129,24 @@ export abstract class Source {
     fetcher: Fetcher,
     ctx: Context,
   ): Promise<string | null> {
+    const extractUrl = (entry: unknown): string | null => {
+      if (typeof entry === 'string') return entry;
+      if (entry && typeof entry === 'object' && 'url' in entry) return (entry as { url: string }).url;
+      return null;
+    };
+
     if (Source.domainsJsonCache && Date.now() - Source.domainsJsonTs < DOMAINS_JSON_TTL) {
-      return Source.domainsJsonCache[domainKey] ?? null;
+      return extractUrl(Source.domainsJsonCache[domainKey]);
     }
 
     try {
-      const json = await fetcher.json(ctx, new URL(DOMAINS_JSON_URL)) as Record<string, string>;
+      const json = await fetcher.json(ctx, new URL(DOMAINS_JSON_URL)) as Record<string, { name: string; url: string }>;
       Source.domainsJsonCache = json;
       Source.domainsJsonTs = Date.now();
-      return json[domainKey] ?? null;
+      return extractUrl(json[domainKey]);
     } catch {
       if (Source.domainsJsonCache) {
-        return Source.domainsJsonCache[domainKey] ?? null;
+        return extractUrl(Source.domainsJsonCache[domainKey]);
       }
       return null;
     }

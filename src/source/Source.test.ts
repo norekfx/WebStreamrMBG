@@ -111,8 +111,9 @@ describe('Source', () => {
       expect(result.origin).toBe('https://alive.example');
     });
 
-    test('Tier 2: uses domains.json when available', async () => {
-      jest.spyOn(fetcher, 'json').mockResolvedValue({ testsource: 'https://from-json.example' });
+    test('Tier 2: uses providers.json when available', async () => {
+      jest.spyOn(fetcher, 'json').mockResolvedValue({ testsource: { name: 'TestSource', url: 'https://from-json.example' } });
+      jest.spyOn(fetcher, 'head').mockResolvedValue({});
 
       const source = new TestSource();
       const result = await source.testProbeBaseUrl(ctx, fetcher, 'testsource', ['https://fallback.example']);
@@ -123,8 +124,26 @@ describe('Source', () => {
       expect(cache.url).toContain('from-json.example');
     });
 
-    test('Tier 2: returns null from domains.json when key not found', async () => {
-      jest.spyOn(fetcher, 'json').mockResolvedValue({ otherkey: 'https://other.example' });
+    test('Tier 2: supports flat string format (backward compat)', async () => {
+      jest.spyOn(fetcher, 'json').mockResolvedValue({ testsource: 'https://flat-string.example' });
+      jest.spyOn(fetcher, 'head').mockResolvedValue({});
+
+      const source = new TestSource();
+      const result = await source.testProbeBaseUrl(ctx, fetcher, 'testsource', ['https://fallback.example']);
+      expect(result.origin).toBe('https://flat-string.example');
+    });
+
+    test('Tier 2: returns null from providers.json when key not found', async () => {
+      jest.spyOn(fetcher, 'json').mockResolvedValue({ otherkey: { name: 'Other', url: 'https://other.example' } });
+      jest.spyOn(fetcher, 'head').mockResolvedValue({});
+
+      const source = new TestSource();
+      const result = await source.testProbeBaseUrl(ctx, fetcher, 'testsource', ['https://alive.example']);
+      expect(result.origin).toBe('https://alive.example');
+    });
+
+    test('Tier 2: handles invalid URL from providers.json gracefully', async () => {
+      jest.spyOn(fetcher, 'json').mockResolvedValue({ testsource: { name: 'TestSource', url: 'not-a-valid-url' } });
       jest.spyOn(fetcher, 'head').mockResolvedValue({});
 
       const source = new TestSource();
@@ -215,8 +234,10 @@ describe('Source', () => {
     test('uses cached JSON when fresh', async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const SourceClass = Source as any;
-      SourceClass.domainsJsonCache = { testsource: 'https://cached-json.example' };
+      SourceClass.domainsJsonCache = { testsource: { name: 'TestSource', url: 'https://cached-json.example' } };
       SourceClass.domainsJsonTs = Date.now();
+
+      jest.spyOn(fetcher, 'head').mockResolvedValue({});
 
       const source = new TestSource();
       const result = await source.testProbeBaseUrl(ctx, fetcher, 'testsource', []);
@@ -226,7 +247,7 @@ describe('Source', () => {
     test('returns null from fresh cache when domain key is absent', async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const SourceClass = Source as any;
-      SourceClass.domainsJsonCache = { other: 'https://other.example' };
+      SourceClass.domainsJsonCache = { other: { name: 'Other', url: 'https://other.example' } };
       SourceClass.domainsJsonTs = Date.now();
 
       jest.spyOn(fetcher, 'head').mockResolvedValue({});
@@ -239,10 +260,11 @@ describe('Source', () => {
     test('fetches fresh JSON from GitHub when cache expired', async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const SourceClass = Source as any;
-      SourceClass.domainsJsonCache = { other: 'https://old.example' };
+      SourceClass.domainsJsonCache = { other: { name: 'Other', url: 'https://old.example' } };
       SourceClass.domainsJsonTs = Date.now() - 999999999; // Expired
 
-      jest.spyOn(fetcher, 'json').mockResolvedValue({ testsource: 'https://fresh-json.example' });
+      jest.spyOn(fetcher, 'json').mockResolvedValue({ testsource: { name: 'TestSource', url: 'https://fresh-json.example' } });
+      jest.spyOn(fetcher, 'head').mockResolvedValue({});
 
       const source = new TestSource();
       const result = await source.testProbeBaseUrl(ctx, fetcher, 'testsource', []);
@@ -252,10 +274,11 @@ describe('Source', () => {
     test('uses stale cache on GitHub fetch failure', async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const SourceClass = Source as any;
-      SourceClass.domainsJsonCache = { testsource: 'https://stale.example' };
+      SourceClass.domainsJsonCache = { testsource: { name: 'TestSource', url: 'https://stale.example' } };
       SourceClass.domainsJsonTs = Date.now() - 999999999; // Expired
 
       jest.spyOn(fetcher, 'json').mockRejectedValue(new Error('network error'));
+      jest.spyOn(fetcher, 'head').mockResolvedValue({});
 
       const source = new TestSource();
       const result = await source.testProbeBaseUrl(ctx, fetcher, 'testsource', ['https://fallback.example']);
@@ -279,7 +302,7 @@ describe('Source', () => {
     test('returns null when stale cache does not contain the domain key', async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const SourceClass = Source as any;
-      SourceClass.domainsJsonCache = { other: 'https://other.example' };
+      SourceClass.domainsJsonCache = { other: { name: 'Other', url: 'https://other.example' } };
       SourceClass.domainsJsonTs = Date.now() - 999999999; // Expired
 
       jest.spyOn(fetcher, 'json').mockRejectedValue(new Error('network error'));

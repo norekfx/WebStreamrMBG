@@ -72,4 +72,52 @@ describe('HubDrive', () => {
     expect(result).toHaveLength(1);
     expect(result.some(r => r.url.href.includes('hubcdn.fans'))).toBe(true);
   });
+
+  test('supports hubcdn.buzz domain (domain rotation)', async () => {
+    const hubDrive = new HubDrive(
+      new FetcherMock(`${__dirname}/__fixtures__/HubDrive`),
+      logger,
+      new HubCloud(new FetcherMock(`${__dirname}/__fixtures__/HubDrive/HubCloud`), logger),
+    );
+    expect(hubDrive.supports(ctx, new URL('https://hubcdn.buzz/file/test'))).toBe(true);
+    expect(hubDrive.supports(ctx, new URL('https://gpdl.hubcdn.buzz/file/test'))).toBe(true);
+    expect(hubDrive.supports(ctx, new URL('https://hubcdn.fans/file/test'))).toBe(true);
+  });
+
+  test('returns empty when HubCloud link has invalid URL', async () => {
+    const result = await extractorRegistry.handle(ctx, new URL('https://hubdrive.test/file/9990000001'));
+    expect(result).toEqual([]);
+  });
+
+  test('returns empty when URL has no /file/ path', async () => {
+    const result = await extractorRegistry.handle(ctx, new URL('https://hubdrive.space/other/path'));
+    expect(result).toEqual([]);
+  });
+
+  test('returns empty when HubCloud extract throws', async () => {
+    const hubCloud = new HubCloud(new FetcherMock(`${__dirname}/__fixtures__/HubDrive/HubCloud`), logger);
+    const hubDrive = new HubDrive(
+      new FetcherMock(`${__dirname}/__fixtures__/HubDrive`),
+      logger,
+      hubCloud,
+    );
+    jest.spyOn(hubCloud, 'extract').mockRejectedValue(new Error('extract failed'));
+    const result = await hubDrive.extract(ctx, new URL('https://hubdrive.test/file/9990000004'), {});
+    expect(result).toEqual([]);
+  });
+
+  test('returns empty when HubCloud links point to dead domains only', async () => {
+    const result = await extractorRegistry.handle(ctx, new URL('https://hubdrive.test/file/9990000002'));
+    expect(result).toEqual([]);
+  });
+
+  test('returns empty when HubCloud link has no href attribute', async () => {
+    const result = await extractorRegistry.handle(ctx, new URL('https://hubdrive.test/file/9990000006'));
+    expect(result).toEqual([]);
+  });
+
+  test('returns empty when no HubCloud link found and no direct API fallback', async () => {
+    const result = await extractorRegistry.handle(ctx, new URL('https://hubdrive.space/file/2243124026'));
+    expect(result).toEqual([]);
+  });
 });

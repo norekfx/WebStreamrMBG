@@ -9,6 +9,17 @@ import { Fetcher, findCountryCodes, getTmdbId, getTmdbNameAndYear, Id, TmdbId } 
 import { resolveRedirectUrl } from './hd-hub-helper';
 import { Source, SourceResult } from './Source';
 
+const DEAD_DOMAINS = new Set([
+  'hubcloud.ink',
+  'hubcloud.co',
+  'hubcloud.cc',
+  'hubcloud.me',
+  'hubcloud.xyz',
+]);
+
+const HUB_PATTERNS = /hubcloud|hubdrive|hubcdn/;
+const PIXEL_PATTERNS = /pixel\.(hubcdn|rohitkiskk)/;
+
 export class FourKHDHub extends Source {
   public readonly id = '4khdhub';
 
@@ -18,11 +29,12 @@ export class FourKHDHub extends Source {
 
   public readonly countryCodes: CountryCode[] = [CountryCode.multi, CountryCode.hi, CountryCode.ta, CountryCode.te];
 
-  public readonly baseUrl = 'https://4khdhub.click';
+  public readonly baseUrl = 'https://4khdhub.link';
 
-  private readonly DOMAIN_KEY = '4khdhub';
+  private readonly DOMAIN_KEY = '4kHDHub';
 
   private readonly FALLBACK_CANDIDATES = [
+    'https://4khdhub.link',
     'https://4khdhub.click',
     'https://4khdhub.ink',
     'https://4khdhub.one',
@@ -119,38 +131,38 @@ export class FourKHDHub extends Source {
       ...(sizeMatch && { bytes: bytes.parse(sizeMatch[1] as string) as number }),
     };
 
-    const sourceResults: SourceResult[] = [];
+    const urls: URL[] = [];
+    const seenUrls = new Set<string>();
 
-    const hubCloudUrl = $('a', el)
-      .filter((_i, el) => $(el).text().includes('HubCloud'))
-      .map((_i, el) => new URL($(el).attr('href') as string))
-      .get(0);
-    if (hubCloudUrl) {
-      sourceResults.push({ url: await this.resolveIfRedirect(ctx, hubCloudUrl), meta });
-    }
+    $('a', el)
+      .filter((_i, a) => {
+        const href = $(a).attr('href');
+        return !!href && HUB_PATTERNS.test(href);
+      })
+      .each((_i, a) => {
+        const href = $(a).attr('href') as string;
+        try {
+          const url = new URL(href);
+          if (seenUrls.has(url.href)) return;
+          seenUrls.add(url.href);
 
-    const hubDriveUrl = $('a', el)
-      .filter((_i, el) => $(el).text().includes('HubDrive'))
-      .map((_i, el) => new URL($(el).attr('href') as string))
-      .get(0);
-    if (hubDriveUrl) {
-      sourceResults.push({ url: await this.resolveIfRedirect(ctx, hubDriveUrl), meta });
-    }
+          if (DEAD_DOMAINS.has(url.hostname.toLowerCase())) return;
+          if (PIXEL_PATTERNS.test(url.href)) return;
 
-    const hubCdnUrl = $('a[href*="hubcdn.fans"]', el)
-      .map((_i, el) => new URL($(el).attr('href') as string))
-      .get(0);
-    if (hubCdnUrl) {
-      sourceResults.push({ url: hubCdnUrl, meta });
-    }
+          urls.push(url);
+        } catch {
+          // skip invalid URLs
+        }
+      });
 
-    return sourceResults;
+    return Promise.all(urls.map(async url => ({
+      url: await this.resolveIfRedirect(ctx, url),
+      meta,
+    })));
   };
 
-  private static readonly DIRECT_DOMAINS = ['hubcloud.foo', 'hubdrive.space', 'hubcdn.fans'];
-
   private readonly resolveIfRedirect = async (ctx: Context, url: URL): Promise<URL> => {
-    if (FourKHDHub.DIRECT_DOMAINS.some(domain => url.hostname === domain || url.hostname.endsWith(`.${domain}`))) {
+    if (/hubcloud|hubdrive|hubcdn/.test(url.hostname.toLowerCase())) {
       return url;
     }
 

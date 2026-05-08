@@ -5,6 +5,12 @@ import { Fetcher, findCountryCodes, getImdbId, Id, ImdbId } from '../utils';
 import { resolveRedirectUrl } from './hd-hub-helper';
 import { Source, SourceResult } from './Source';
 
+interface CdnHostResponse {
+  h?: string;
+  c?: string;
+  t?: number;
+}
+
 interface SearchResponsePartial {
   hits: {
     document: {
@@ -15,6 +21,21 @@ interface SearchResponsePartial {
   }[];
 }
 
+const CDN_HOST_URL = 'https://cdn.hdhub4u.glass/host/';
+const CDN_HOST_TTL = 4 * 60 * 60 * 1000;
+
+let cdnDiscoveredUrl: string | null = null;
+let cdnDiscoveryTs = 0;
+
+export function resetCdnCache(): void {
+  cdnDiscoveredUrl = null;
+  cdnDiscoveryTs = 0;
+}
+
+const HOST_PATTERNS = ['hubdrive', 'hubcloud', 'hubcdn'];
+const EXCLUDED_HREF_PATTERNS = ['gadgetsweb', '4khdhub', 'linksly', 'shareus', 'dood', 'desiupload', 'megaup', 'filepress', 'mediashore', 'ninjastream', 'hubstream'];
+const DEAD_HOST_DOMAINS = new Set(['hubcloud.ink', 'hubcloud.co', 'hubcloud.cc', 'hubcloud.me', 'hubcloud.xyz']);
+
 export class HDHub4u extends Source {
   public readonly id = 'hdhub4u';
 
@@ -24,15 +45,25 @@ export class HDHub4u extends Source {
 
   public readonly countryCodes: CountryCode[] = [CountryCode.multi, CountryCode.gu, CountryCode.hi, CountryCode.ml, CountryCode.pa, CountryCode.ta, CountryCode.te];
 
-  public readonly baseUrl = 'https://new7.hdhub4u.fo';
+  public readonly baseUrl = 'https://new1.hdhub4u.limo';
 
-  private readonly DOMAIN_KEY = 'hdhub4u';
+  private readonly DOMAIN_KEY = 'hdhub';
 
-  private readonly FALLBACK_CANDIDATES = Array.from(
-    { length: 10 }, (_, i) => `https://new${i + 1}.hdhub4u.fo`,
-  );
+  private readonly FALLBACK_CANDIDATES = [
+    'https://new1.hdhub4u.limo',
+    'https://new1.hdhub4u.fo',
+    'https://new2.hdhub4u.fo',
+    'https://new3.hdhub4u.fo',
+    'https://new4.hdhub4u.fo',
+    'https://new5.hdhub4u.fo',
+    'https://new6.hdhub4u.fo',
+    'https://new7.hdhub4u.fo',
+    'https://new8.hdhub4u.fo',
+    'https://new9.hdhub4u.fo',
+    'https://new10.hdhub4u.fo',
+  ];
 
-  private readonly searchUrl = 'https://search.pingora.fyi';
+  private readonly searchUrl = 'https://search.hdhub4u.glass';
 
   private readonly fetcher: Fetcher;
 
@@ -97,22 +128,44 @@ export class HDHub4u extends Source {
   };
 
   private readonly handleHubLinks = async (ctx: Context, redirectUrl: URL, refererUrl: URL, meta: Meta): Promise<SourceResult[]> => {
-    const hubLinksUrl = await resolveRedirectUrl(ctx, this.fetcher, redirectUrl);
-    const hubLinksHtml = await this.fetcher.text(ctx, hubLinksUrl, { headers: { Referer: refererUrl.href } });
+    const resolvedUrl = await resolveRedirectUrl(ctx, this.fetcher, redirectUrl);
+
+    if (HOST_PATTERNS.some(p => resolvedUrl.host.toLowerCase().includes(p))) {
+      if (!DEAD_HOST_DOMAINS.has(resolvedUrl.host.toLowerCase())) {
+        return [{ url: resolvedUrl, meta: { ...meta, referer: refererUrl.href } }];
+      }
+      return [];
+    }
+
+    const hubLinksHtml = await this.fetcher.text(ctx, resolvedUrl, { headers: { Referer: refererUrl.href } });
 
     return [
-      ...this.extractHubDriveUrlResults(hubLinksHtml, { ...meta, referer: hubLinksUrl.href }),
+      ...this.extractHubDriveUrlResults(hubLinksHtml, { ...meta, referer: resolvedUrl.href }),
     ];
   };
 
   private readonly extractHubDriveUrlResults = (html: string, meta: Meta): SourceResult[] => {
     const $ = cheerio.load(html);
-    const allLinks = $('a[href*="hubdrive"], a[href*="hubcdn.fans"], a[href*="hdstream4u.com"], a[href*="hblinks.dad"], a[href*="hubcloud"]');
+    const allLinks = $('a').filter((_i, el) => {
+      const href = ($(el).attr('href') ?? '').toLowerCase();
+      if (!href) return false;
+      if (EXCLUDED_HREF_PATTERNS.some(p => href.includes(p))) return false;
+      return HOST_PATTERNS.some(p => href.includes(p));
+    });
     const filteredLinks = allLinks.not(':contains("⚡")');
 
     return filteredLinks
-      .map((_i, el) => ({ url: new URL($(el).attr('href') as string), meta }))
-      .toArray();
+      .map((_i, el) => {
+        try {
+          const url = new URL($(el).attr('href') as string);
+          if (DEAD_HOST_DOMAINS.has(url.host.toLowerCase())) return null;
+          return { url, meta };
+        } catch {
+          return null;
+        }
+      })
+      .toArray()
+      .filter((r): r is SourceResult => r !== null);
   };
 
   private readonly fetchPageUrls = async (ctx: Context, imdbId: ImdbId): Promise<URL[]> => {
@@ -167,7 +220,51 @@ export class HDHub4u extends Source {
     }
   };
 
+  private async discoverFromCdn(ctx: Context): Promise<string | null> {
+    if (cdnDiscoveredUrl && Date.now() - cdnDiscoveryTs < CDN_HOST_TTL) {
+      return cdnDiscoveredUrl;
+    }
+
+    try {
+      const d = new Date();
+      const seed = (d.getFullYear() * 1000000) + ((d.getMonth() + 1) * 10000) + (d.getDate() * 100) + d.getHours() + 1;
+      const url = new URL(`?v=${seed}`, CDN_HOST_URL);
+      const response = await this.fetcher.json(ctx, url) as CdnHostResponse;
+
+      if (response.c) {
+        const decoded = atob(response.c.replace(/\/$/, ''));
+        const baseUrl = decoded.replace(/[?&]utm=[^&]*/, '').replace(/\/$/, '');
+        cdnDiscoveredUrl = baseUrl;
+        cdnDiscoveryTs = Date.now();
+        return baseUrl;
+      }
+    } catch { /* CDN endpoint unreachable */ }
+
+    return null;
+  }
+
   private readonly getBaseUrl = async (ctx: Context) => {
+    const cdnUrl = await this.discoverFromCdn(ctx);
+    if (cdnUrl) {
+      const hostname = (() => {
+        try {
+          return new URL(cdnUrl).hostname;
+        } catch {
+          return '';
+        }
+      })();
+      const diedAt = hostname ? Source.deadDomains.get(hostname) : undefined;
+      const isKnownDead = diedAt && Date.now() - diedAt < Source.DEAD_DOMAIN_TTL;
+
+      if (!isKnownDead) {
+        try {
+          return new URL(cdnUrl);
+        } catch {
+          // invalid CDN URL, fall through to probeBaseUrl
+        }
+      }
+    }
+
     return this.probeBaseUrl(ctx, this.fetcher, this.DOMAIN_KEY, this.FALLBACK_CANDIDATES);
   };
 }

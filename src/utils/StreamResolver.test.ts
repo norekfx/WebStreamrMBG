@@ -12,7 +12,7 @@ import { MostraGuarda } from '../source/MostraGuarda';
 import { RgShows } from '../source/RgShows';
 import { VixSrc } from '../source/VixSrc';
 import { createTestContext } from '../test';
-import { BlockedReason, CountryCode, Format, UrlResult } from '../types';
+import { BlockedReason, CountryCode, Format, Meta, UrlResult } from '../types';
 import { FetcherMock } from './FetcherMock';
 import { ImdbId, TmdbId } from './id';
 import { StreamResolver } from './StreamResolver';
@@ -329,4 +329,46 @@ test('handles source throwing non-NotFoundError', async () => {
 
   const streamsWithShowErrors = await streamResolver.resolve({ ...ctx, config: { ...ctx.config, showErrors: 'on' } }, [new ThrowingSource()], 'movie', new ImdbId('tt12345678', undefined, undefined));
   expect(streamsWithShowErrors).toMatchSnapshot();
+});
+
+test('skips fallback source when enough results already found', async () => {
+  class PrimarySource extends Source {
+    public readonly id = 'primary';
+    public readonly label = 'Primary';
+    public readonly contentTypes: ContentType[] = ['movie'];
+    public readonly countryCodes: CountryCode[] = [CountryCode.de];
+    public readonly baseUrl = 'https://example.com';
+    public readonly handleInternal = async (): Promise<SourceResult[]> => {
+      return [
+        { url: new URL('https://example.com/1'), meta: { countryCodes: [CountryCode.de] } },
+        { url: new URL('https://example.com/2'), meta: { countryCodes: [CountryCode.de] } },
+      ];
+    };
+  }
+
+  class FallbackSource extends Source {
+    public readonly id = 'fallback';
+    public readonly label = 'Fallback';
+    public readonly contentTypes: ContentType[] = ['movie'];
+    public readonly countryCodes: CountryCode[] = [CountryCode.de];
+    public override readonly useOnlyWithMaxUrlsFound = 1;
+    public readonly baseUrl = 'https://fallback.com';
+    public readonly handleInternal = async (): Promise<SourceResult[]> => {
+      return [{ url: new URL('https://fallback.com/1'), meta: { countryCodes: [CountryCode.de] } }];
+    };
+  }
+
+  class PassThroughExtractor extends Extractor {
+    public readonly id = 'passthrough';
+    public readonly label = 'PassThrough';
+    public readonly supports = (): boolean => true;
+    protected readonly extractInternal = async (_ctx: unknown, url: URL, meta: Meta): Promise<UrlResult[]> => {
+      return [{ url, format: Format.unknown, label: 'PassThrough', ttl: 300000, meta }];
+    };
+  }
+
+  const streamResolver = new StreamResolver(logger, new ExtractorRegistry(logger, [new PassThroughExtractor(fetcher, logger)]));
+  const streams = await streamResolver.resolve(ctx, [new PrimarySource(), new FallbackSource()], 'movie', new ImdbId('tt99887766', undefined, undefined));
+
+  expect(streams.streams.every(s => !s.name?.includes('Fallback'))).toBe(true);
 });

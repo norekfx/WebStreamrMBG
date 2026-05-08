@@ -27,7 +27,7 @@ export class HBLinks extends Extractor {
   }
 
   public supports(_ctx: Context, url: URL): boolean {
-    return url.host.toLowerCase() === 'hblinks.dad';
+    return /hblinks/.test(url.host.toLowerCase());
   }
 
   protected async extractInternal(ctx: Context, url: URL, meta: Meta): Promise<InternalUrlResult[]> {
@@ -56,7 +56,7 @@ export class HBLinks extends Extractor {
     // extract from every link and aggregate all results.
 
     // HubCDN links (hubcdn.fans) — these contain direct Google video URLs
-    const hubCdnLinks = this.extractLinks($, url, /hubcdn\.fans/);
+    const hubCdnLinks = this.extractLinks($, url, /hubcdn/);
     for (const cdnUrl of hubCdnLinks) {
       try {
         const cdnResults = await this.hubDrive.extract(ctx, cdnUrl, updatedMeta);

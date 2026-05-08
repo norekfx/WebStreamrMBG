@@ -5,6 +5,14 @@ import { Fetcher } from '../utils';
 import { Extractor } from './Extractor';
 import { HubCloud } from './HubCloud';
 
+const DEAD_HUBCLOUD_HOSTS = new Set([
+  'hubcloud.ink',
+  'hubcloud.co',
+  'hubcloud.cc',
+  'hubcloud.me',
+  'hubcloud.xyz',
+]);
+
 export class HubDrive extends Extractor {
   public readonly id = 'hubdrive';
 
@@ -12,7 +20,7 @@ export class HubDrive extends Extractor {
 
   public override readonly ttl: number = 120000; // 2 min
 
-  public override readonly cacheVersion = 2;
+  public override readonly cacheVersion = 3;
 
   private readonly hubCloud: HubCloud;
 
@@ -23,7 +31,7 @@ export class HubDrive extends Extractor {
   }
 
   public supports(_ctx: Context, url: URL): boolean {
-    return null !== url.host.match(/hubdrive|hubcdn\.fans/);
+    return null !== url.host.match(/hubdrive|hubcdn/);
   }
 
   protected async extractInternal(ctx: Context, url: URL, meta: Meta): Promise<InternalUrlResult[]> {
@@ -31,18 +39,41 @@ export class HubDrive extends Extractor {
 
     const html = await this.fetcher.text(ctx, url, { headers });
 
-    if (url.host.includes('hubcdn.fans')) {
+    if (/hubcdn/.test(url.host)) {
       return this.extractHubCdnResult(html, meta);
     }
 
+    const results = await this.extractViaHubCloud(ctx, html, meta);
+    return results;
+  };
+
+  private async extractViaHubCloud(ctx: Context, html: string, meta: Meta): Promise<InternalUrlResult[]> {
     const $ = cheerio.load(html);
 
     const hubCloudUrl = $('a:contains("HubCloud")')
-      .map((_i, el) => new URL($(el).attr('href') as string))
+      .map((_i, el) => {
+        const href = $(el).attr('href');
+        if (!href) return null;
+        try {
+          const parsed = new URL(href);
+          if (DEAD_HUBCLOUD_HOSTS.has(parsed.host.toLowerCase())) return null;
+          return parsed;
+        } catch {
+          return null;
+        }
+      })
       .get(0);
 
-    return hubCloudUrl ? this.hubCloud.extract(ctx, hubCloudUrl, meta) : [];
-  };
+    if (!hubCloudUrl) {
+      return [];
+    }
+
+    try {
+      return await this.hubCloud.extract(ctx, hubCloudUrl, meta);
+    } catch {
+      return [];
+    }
+  }
 
   private extractHubCdnResult(html: string, meta: Meta): InternalUrlResult[] {
     // Pattern 1: <a id="vd" href='URL'> (new hubcdn.fans format)
@@ -61,7 +92,7 @@ export class HubDrive extends Extractor {
     if (reurlMatch?.[1]) {
       try {
         const reurlValue = reurlMatch[1];
-        if (reurlValue.includes('hubcdn.fans/dl/?link=')) {
+        if (reurlValue.includes('hubcdn') && reurlValue.includes('/dl/?link=')) {
           const dlUrl = new URL(reurlValue);
           const linkParam = dlUrl.searchParams.get('link');
           if (linkParam) {

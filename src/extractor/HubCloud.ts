@@ -48,7 +48,7 @@ const REDIRECT_STRATEGIES: readonly ((html: string) => string | null)[] = [
   },
 
   (html) => {
-    const m = html.match(/https?:\/\/(?:hubcloud\.[a-z.]+|hubdrive\.[a-z.]+|gamerxyt\.com|hubcdn\.fans)[^\s'"<>)]+/);
+    const m = html.match(/https?:\/\/(?:hubcloud\.[a-z.]+|hubdrive\.[a-z.]+|gamerxyt\.com|hubcdn)[^\s'"<>)]+/);
     return m?.[0] ?? null;
   },
 ];
@@ -58,7 +58,7 @@ export class HubCloud extends Extractor {
 
   public readonly label = 'HubCloud';
 
-  public override readonly cacheVersion = 10;
+  public override readonly cacheVersion = 11;
 
   public override readonly ttl = HUBCLOUD_CACHE_TTL;
 
@@ -169,33 +169,58 @@ export class HubCloud extends Extractor {
         }),
       ).then(results => results.filter(r => r !== null)),
 
-      // HubCloud Direct — workers.dev links (PDL Server / Download File)
+      // HubCloud PDL — workers.dev links with "PDL" button text
       ...$('a')
-        .filter((_i, el) => ($(el).attr('href') ?? '').includes('workers.dev'))
+        .filter((_i, el) => {
+          const href = ($(el).attr('href') ?? '');
+          const text = $(el).text();
+          return href.includes('workers.dev') && !href.includes('.zip') && text.includes('PDL');
+        })
         .map((_i, el) => {
           const href = $(el).attr('href') as string;
           return {
             url: new URL(href),
             format: Format.unknown,
             ttl: HUBCLOUD_CACHE_TTL,
-            label: `${this.label} (Direct)`,
+            label: `${this.label} (PDL)`,
+            meta: { ...meta, bytes: fileSize, extractorId: `${this.id}_pdl`, countryCodes, height, title },
+          };
+        }).toArray(),
+
+      // HubCloud DF — workers.dev links (plain file, not zip-wrapped, non-PDL)
+      ...$('a')
+        .filter((_i, el) => {
+          const href = ($(el).attr('href') ?? '');
+          const text = $(el).text();
+          return href.includes('workers.dev') && !href.includes('.zip') && !text.includes('PDL');
+        })
+        .map((_i, el) => {
+          const href = $(el).attr('href') as string;
+          return {
+            url: new URL(href),
+            format: Format.unknown,
+            ttl: HUBCLOUD_CACHE_TTL,
+            label: `${this.label} (DF)`,
             meta: { ...meta, bytes: fileSize, extractorId: `${this.id}_direct`, countryCodes, height, title },
           };
         }).toArray(),
 
-      // HubCloud Fast — hubcdn.fans links (10Gbps Server)
       ...$('a')
-        .filter((_i, el) => ($(el).attr('href') ?? '').includes('hubcdn.fans'))
+        .filter((_i, el) => {
+          const href = ($(el).attr('href') ?? '').toLowerCase();
+          return href.includes('hubcdn') && !href.includes('pixel.');
+        })
         .map((_i, el) => {
           const href = $(el).attr('href') as string;
           return {
             url: new URL(href),
             format: Format.unknown,
             ttl: HUBCLOUD_CACHE_TTL,
-            label: `${this.label} (Fast)`,
+            label: `${this.label} (10Gbps)`,
             meta: { ...meta, bytes: fileSize, extractorId: `${this.id}_fast`, countryCodes, height, title },
           };
         }).toArray(),
+
     ]);
   };
 
@@ -228,7 +253,7 @@ export class HubCloud extends Extractor {
       'a[href*="gamerxyt.com"]',
       'a[href*="hubcloud.one"]',
       'a[href*="workers.dev"]',
-      'a[href*="hubcdn.fans"]',
+      'a[href*="hubcdn"]',
       '.download-btn',
       'a[href*="download"]',
       'a.btn.btn-primary',
