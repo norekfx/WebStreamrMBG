@@ -4,7 +4,6 @@ import { ExternalUrl } from '../extractor/ExternalUrl';
 import { SuperVideo } from '../extractor/SuperVideo';
 import { createSources } from '../source';
 import { MeineCloud } from '../source/MeineCloud';
-import { StreamKiste } from '../source/StreamKiste';
 import { VerHdLink } from '../source/VerHdLink';
 import { VixSrc } from '../source/VixSrc';
 import { FetcherMock } from './FetcherMock';
@@ -26,7 +25,6 @@ describe('buildManifest', () => {
     const sources = [
       new VixSrc(fetcher),
       new VerHdLink(fetcher),
-      new StreamKiste(fetcher),
       new MeineCloud(fetcher),
     ];
 
@@ -38,7 +36,6 @@ describe('buildManifest', () => {
   test('has checked source with appropriate config', () => {
     const sources = [
       new VerHdLink(fetcher),
-      new StreamKiste(fetcher),
       new MeineCloud(fetcher),
     ];
     const manifest = buildManifest(sources, [], { de: 'on', includeExternalUrls: 'on' });

@@ -206,27 +206,7 @@ exports[`resolve ignores not found errors 1`] = `
 }
 `;
 
-exports[`resolve keeps fallback sources if needed 1`] = `
-[
-  {
-    "behaviorHints": {
-      "bingeGroup": "webstreamr-mbg-rgshows-rgshows-multi",
-      "notWebReady": true,
-      "proxyHeaders": {
-        "request": {
-          "Origin": "https://www.rgshows.ru",
-          "Referer": "https://www.rgshows.ru/",
-          "User-Agent": "Mozilla",
-        },
-      },
-    },
-    "name": "WebStreamrMBG 🌐 1080p",
-    "title": "Wake Up Dead Man: A Knives Out Mystery (2025)
-🔗 RgShows",
-    "url": "https://cdn.1shows.app/e/DBkXNgRLXFBfRllF/master.m3u8",
-  },
-]
-`;
+exports[`resolve keeps fallback sources if needed 1`] = `[]`;
 
 exports[`resolve returns empty array if no source found anything 1`] = `
 {
@@ -442,24 +422,4 @@ exports[`resolve returns source errors as stream 2`] = `
 }
 `;
 
-exports[`resolve skips fallback sources if possible 1`] = `
-[
-  {
-    "behaviorHints": {
-      "bingeGroup": "webstreamr-mbg-rgshows-rgshows-multi",
-      "notWebReady": true,
-      "proxyHeaders": {
-        "request": {
-          "Origin": "https://www.rgshows.ru",
-          "Referer": "https://www.rgshows.ru/",
-          "User-Agent": "Mozilla",
-        },
-      },
-    },
-    "name": "WebStreamrMBG 🌐 1080p",
-    "title": "Wake Up Dead Man: A Knives Out Mystery (2025)
-🔗 RgShows",
-    "url": "https://cdn.1shows.app/e/DBkXNgRLXFBfRllF/master.m3u8",
-  },
-]
-`;
+exports[`resolve skips fallback sources if possible 1`] = `[]`;

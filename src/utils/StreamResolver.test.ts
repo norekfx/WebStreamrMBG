@@ -3,12 +3,10 @@ import winston from 'winston';
 import { BlockedError, HttpError, NotFoundError, QueueIsFullError, TimeoutError, TooManyRequestsError, TooManyTimeoutsError } from '../error';
 import { createExtractors, Extractor, ExtractorRegistry } from '../extractor';
 import { HubCloud } from '../extractor/HubCloud';
-import { RgShows as RgShowsExtractor } from '../extractor/RgShows';
 import { Source, SourceResult } from '../source';
 import { FourKHDHub } from '../source/FourKHDHub';
 import { MeineCloud } from '../source/MeineCloud';
 import { MostraGuarda } from '../source/MostraGuarda';
-import { RgShows } from '../source/RgShows';
 import { createTestContext } from '../test';
 import { BlockedReason, CountryCode, Format, Meta, UrlResult } from '../types';
 import { FetcherMock } from './FetcherMock';
@@ -74,16 +72,28 @@ describe('resolve', () => {
   });
 
   test('skips fallback sources if possible', async () => {
-    const streamResolver = new StreamResolver(logger, new ExtractorRegistry(logger, [new HubCloud(fetcher, logger), new RgShowsExtractor(fetcher, logger)]));
+    const streamResolver = new StreamResolver(logger, new ExtractorRegistry(logger, [new HubCloud(fetcher, logger)]));
 
-    const streams = await streamResolver.resolve(createTestContext(), [fourKhdHub, new RgShows(fetcher)], 'movie', new TmdbId(812583, undefined, undefined));
+    const streams = await streamResolver.resolve(createTestContext(), [fourKhdHub], 'movie', new TmdbId(812583, undefined, undefined));
     expect(streams.streams).toMatchSnapshot();
   });
 
   test('keeps fallback sources if needed', async () => {
-    const streamResolver = new StreamResolver(logger, new ExtractorRegistry(logger, [new HubCloud(fetcher, logger), new RgShowsExtractor(fetcher, logger)]));
+    class FallbackSource extends Source {
+      public readonly id = 'fallback-only';
+      public readonly label = 'FallbackOnly';
+      public readonly contentTypes: ContentType[] = ['movie'];
+      public readonly countryCodes: CountryCode[] = [CountryCode.multi];
+      public override readonly useOnlyWithMaxUrlsFound = 1;
+      public readonly baseUrl = 'https://fallback.example';
+      public readonly handleInternal = async (): Promise<SourceResult[]> => {
+        return [{ url: new URL('https://hubcloud.cx/some-link'), meta: { countryCodes: [CountryCode.multi] } }];
+      };
+    }
 
-    const streams = await streamResolver.resolve(createTestContext(), [new RgShows(fetcher)], 'movie', new TmdbId(812583, undefined, undefined));
+    const streamResolver = new StreamResolver(logger, new ExtractorRegistry(logger, [new HubCloud(fetcher, logger)]));
+
+    const streams = await streamResolver.resolve(createTestContext(), [new FallbackSource()], 'movie', new TmdbId(812583, undefined, undefined));
     expect(streams.streams).toMatchSnapshot();
   });
 

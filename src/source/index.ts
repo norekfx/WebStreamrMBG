@@ -16,9 +16,7 @@ import { MeineCloud } from './MeineCloud';
 import { MostraGuarda } from './MostraGuarda';
 import { MovieBox } from './MovieBox';
 import { Movix } from './Movix';
-import { RgShows } from './RgShows';
 import { Source } from './Source';
-import { StreamKiste } from './StreamKiste';
 import { VerHdLink } from './VerHdLink';
 import { VidSrc } from './VidSrc';
 import { Vidzee } from './Vidzee';
@@ -36,7 +34,6 @@ export const createSources = (fetcher: Fetcher): Source[] => {
     new VixSrc(fetcher),
     new VidSrc(),
     new Vidzee(fetcher),
-    new RgShows(fetcher),
     new MovieBox(fetcher),
     // AL
     new Kokoshka(fetcher),
@@ -50,7 +47,6 @@ export const createSources = (fetcher: Fetcher): Source[] => {
     new KinoGer(fetcher),
     new MegaKino(fetcher),
     new MeineCloud(fetcher),
-    new StreamKiste(fetcher),
     new FilmpalastTO(fetcher),
     // FR
     new Frembed(fetcher),

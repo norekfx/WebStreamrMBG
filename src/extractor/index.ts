@@ -16,7 +16,6 @@ import { KinoGer } from './KinoGer';
 import { LuluStream } from './LuluStream';
 import { Mixdrop } from './Mixdrop';
 import { MovieBox } from './MovieBox';
-import { RgShows } from './RgShows';
 import { SaveFiles } from './SaveFiles';
 import { StreamEmbed } from './StreamEmbed';
 import { Streamtape } from './Streamtape';
@@ -54,7 +53,6 @@ export const createExtractors = (fetcher: Fetcher, logger: winston.Logger): Extr
     new LuluStream(fetcher, logger),
     new Mixdrop(fetcher, logger),
     new MovieBox(fetcher, logger),
-    new RgShows(fetcher, logger),
     new SaveFiles(fetcher, logger),
     new StreamEmbed(fetcher, logger),
     new Streamtape(fetcher, logger),
