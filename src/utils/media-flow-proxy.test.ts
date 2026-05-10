@@ -8,6 +8,7 @@ import {
 } from './media-flow-proxy';
 
 const ctxWithProxy = createTestContext({ mediaFlowProxyUrl: 'proxy.example.com', mediaFlowProxyPassword: 'secret' });
+const ctxWithProxyNoPassword = createTestContext({ mediaFlowProxyUrl: 'proxy.example.com' });
 const ctxWithoutProxy = createTestContext();
 const fetcher = new FetcherMock(`${__dirname}/__fixtures__/media-flow-proxy`);
 
@@ -60,5 +61,17 @@ describe('buildMediaFlowProxyExtractorRedirectUrl without headers', () => {
     const url = buildMediaFlowProxyExtractorRedirectUrl(ctxWithProxy, 'example.com', new URL('https://example.com/video'));
     expect(url.pathname).toBe('/extractor/video');
     expect(url.searchParams.get('redirect_stream')).toBe('true');
+  });
+});
+
+describe('api_password handling', () => {
+  test('buildMediaFlowProxyExtractorRedirectUrl omits api_password when not set', () => {
+    const url = buildMediaFlowProxyExtractorRedirectUrl(ctxWithProxyNoPassword, 'example.com', new URL('https://example.com/video'));
+    expect(url.searchParams.has('api_password')).toBe(false);
+  });
+
+  test('buildMediaFlowProxyHlsUrl omits api_password when not set', () => {
+    const url = buildMediaFlowProxyHlsUrl(ctxWithProxyNoPassword, new URL('https://example.com/stream.m3u8'));
+    expect(url.searchParams.has('api_password')).toBe(false);
   });
 });

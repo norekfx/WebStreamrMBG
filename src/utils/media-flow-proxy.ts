@@ -14,7 +14,9 @@ const buildMediaFlowProxyExtractorUrl = (ctx: Context, host: string, url: URL, h
   const mediaFlowProxyUrl = new URL('/extractor/video', `https://${ctx.config.mediaFlowProxyUrl?.replace(/^https?:\/\//, '')}`);
 
   mediaFlowProxyUrl.searchParams.append('host', host);
-  mediaFlowProxyUrl.searchParams.append('api_password', `${ctx.config.mediaFlowProxyPassword}`);
+  if (ctx.config.mediaFlowProxyPassword) {
+    mediaFlowProxyUrl.searchParams.append('api_password', ctx.config.mediaFlowProxyPassword);
+  }
   mediaFlowProxyUrl.searchParams.append('d', url.href);
 
   for (const headerKey in headers) {
@@ -51,7 +53,9 @@ export const buildMediaFlowProxyExtractorStreamUrl = async (ctx: Context, fetche
 };
 export const buildMediaFlowProxyHlsUrl = (ctx: Context, m3u8Url: URL, headers: Record<string, string> = {}, proxySegments = false): URL => {
   const mediaFlowProxyUrl = new URL('/proxy/hls/manifest.m3u8', `https://${ctx.config.mediaFlowProxyUrl?.replace(/^https?:\/\//, '')}`);
-  mediaFlowProxyUrl.searchParams.append('api_password', `${ctx.config.mediaFlowProxyPassword}`);
+  if (ctx.config.mediaFlowProxyPassword) {
+    mediaFlowProxyUrl.searchParams.append('api_password', ctx.config.mediaFlowProxyPassword);
+  }
   mediaFlowProxyUrl.searchParams.append('d', m3u8Url.href);
   if (proxySegments) mediaFlowProxyUrl.searchParams.append('force_playlist_proxy', 'true');
   for (const headerKey in headers) {

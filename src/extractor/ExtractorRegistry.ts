@@ -75,7 +75,7 @@ export class ExtractorRegistry {
     ) {
       // generate lazy extract urls
       return lazyUrlResults.map((urlResult, index) => {
-        const extractUrl = new URL('/extract/', ctx.hostUrl);
+        const extractUrl = new URL(`/${encodeURIComponent(JSON.stringify(ctx.config))}/extract/`, ctx.hostUrl);
 
         extractUrl.searchParams.set('index', `${index}`);
         extractUrl.searchParams.set('url', url.href);

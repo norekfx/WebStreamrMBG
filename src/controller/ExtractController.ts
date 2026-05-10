@@ -21,6 +21,7 @@ export class ExtractController {
     this.extractorRegistry = extractorRegistry;
 
     this.router.get('/extract', this.extract.bind(this));
+    this.router.get('/:config/extract', this.extract.bind(this));
   }
 
   private async extract(req: Request, res: Response) {
