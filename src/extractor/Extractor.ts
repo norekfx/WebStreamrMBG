@@ -12,6 +12,8 @@ export abstract class Extractor {
 
   public readonly cacheVersion: number | undefined = undefined;
 
+  public readonly lazyExtract: boolean = false;
+
   public readonly viaMediaFlowProxy: boolean = false;
 
   protected readonly fetcher: Fetcher;

@@ -50,38 +50,33 @@ export class ExtractorRegistry {
     const canonicalUrl = await extractor.normalizeAsync(ctx, normalizedUrl);
     const cacheKey = this.determineCacheKey(ctx, extractor, canonicalUrl);
 
-    const storedDataRaw = await this.urlResultCache.getRaw<UrlResult[]>(cacheKey);
-    const expires = storedDataRaw?.expires;
-    if (storedDataRaw && expires) {
-      const remainingCacheTtl = expires - Date.now();
-
-      /* istanbul ignore if */
-      if (remainingCacheTtl > 0) {
-        // Use the minimum of the per-result TTL and the remaining cache TTL.
-        return (storedDataRaw.value as UrlResult[]).map(urlResult => ({
-          ...urlResult,
-          ttl: Math.min(urlResult.ttl, remainingCacheTtl),
-          url: new URL(urlResult.url),
-        }));
+    // Lazy-extract path: always return /extract/ URLs from cached metadata, never direct URLs
+    if (extractor.lazyExtract && allowLazy && !extractor.viaMediaFlowProxy) {
+      const lazyUrlResults = await this.lazyUrlResultCache.get<UrlResult[]>(canonicalUrl.href) ?? [];
+      if (lazyUrlResults.length) {
+        return this.buildExtractUrls(ctx, lazyUrlResults, url);
       }
+      // Cache miss — fall through to full extraction, then transform to /extract/ URLs
+    }
+
+    const storedDataRaw = await this.urlResultCache.getRaw<UrlResult[]>(cacheKey);
+    if (storedDataRaw?.expires) {
+      const remainingCacheTtl = storedDataRaw.expires - Date.now();
+      // Use the minimum of the per-result TTL and the remaining cache TTL.
+      return (storedDataRaw.value as UrlResult[]).map(urlResult => ({
+        ...urlResult,
+        ttl: Math.min(urlResult.ttl, remainingCacheTtl),
+        url: new URL(urlResult.url),
+      }));
     }
 
     const lazyUrlResults = await this.lazyUrlResultCache.get<UrlResult[]>(canonicalUrl.href) ?? [];
 
-    /* istanbul ignore next */
     if (
       lazyUrlResults.length && allowLazy && !extractor.viaMediaFlowProxy
       && lazyUrlResults.every(urlResult => urlResult.format !== Format.hls) // related to Android issues, e.g. https://github.com/Stremio/stremio-bugs/issues/1574 or https://github.com/Stremio/stremio-bugs/issues/1579
     ) {
-      // generate lazy extract urls
-      return lazyUrlResults.map((urlResult, index) => {
-        const extractUrl = new URL(`/${encodeURIComponent(JSON.stringify(ctx.config))}/extract/`, ctx.hostUrl);
-
-        extractUrl.searchParams.set('index', `${index}`);
-        extractUrl.searchParams.set('url', url.href);
-
-        return { ...urlResult, url: extractUrl };
-      });
+      return this.buildExtractUrls(ctx, lazyUrlResults, url);
     }
 
     // Reuse in-flight extraction if already running for this canonical URL
@@ -94,7 +89,14 @@ export class ExtractorRegistry {
     this.inFlight.set(cacheKey, extractionPromise);
 
     try {
-      return await extractionPromise;
+      const urlResults = await extractionPromise;
+
+      // Lazy-extract: transform direct URLs to /extract/ URLs even on first extraction
+      if (extractor.lazyExtract && allowLazy && !extractor.viaMediaFlowProxy) {
+        return this.buildExtractUrls(ctx, urlResults, url);
+      }
+
+      return urlResults;
     } finally {
       this.inFlight.delete(cacheKey);
     }
@@ -127,7 +129,8 @@ export class ExtractorRegistry {
       await this.urlResultCache.set<UrlResult[]>(cacheKey, successResults, ttl);
 
       if (extractor.id !== 'external') {
-        await this.lazyUrlResultCache.set<UrlResult[]>(canonicalUrl.href, successResults, 86400000); // 24 hours
+        const lazyTtl = extractor.lazyExtract ? 604800000 : 86400000; // 7 days for lazy extractors, 24h otherwise
+        await this.lazyUrlResultCache.set<UrlResult[]>(canonicalUrl.href, successResults, lazyTtl);
       }
     } else {
       // All results are errors — don't cache, clear any stale cache
@@ -137,6 +140,15 @@ export class ExtractorRegistry {
 
     return urlResults;
   };
+
+  private buildExtractUrls(ctx: Context, urlResults: UrlResult[], originalUrl: URL): UrlResult[] {
+    return urlResults.map((urlResult, index) => {
+      const extractUrl = new URL(`/${encodeURIComponent(JSON.stringify(ctx.config))}/extract/`, ctx.hostUrl);
+      extractUrl.searchParams.set('index', `${index}`);
+      extractUrl.searchParams.set('url', originalUrl.href);
+      return { ...urlResult, url: extractUrl };
+    });
+  }
 
   private determineCacheKey(ctx: Context, extractor: Extractor, url: URL): string {
     let suffix = '';

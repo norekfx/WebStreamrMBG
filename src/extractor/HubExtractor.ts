@@ -32,6 +32,8 @@ export class HubExtractor extends Extractor {
 
   public readonly label = 'HubCloud';
 
+  public override readonly lazyExtract = true;
+
   public override readonly cacheVersion = 2;
 
   public override readonly ttl = HUBCLOUD_CACHE_TTL;

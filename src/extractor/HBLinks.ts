@@ -10,6 +10,8 @@ export class HBLinks extends Extractor {
 
   public readonly label = 'HUBLinks';
 
+  public override readonly lazyExtract = true;
+
   public override readonly ttl: number = 120000; // 2 min
 
   public override readonly cacheVersion = 2;
