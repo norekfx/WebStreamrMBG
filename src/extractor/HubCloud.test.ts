@@ -58,9 +58,8 @@ describe('HubCloud extended download selectors', () => {
     });
     jest.spyOn(fetcher, 'setCookie').mockImplementation(() => { /* noop */ });
 
-    const result = await hubCloud.extract(ctx, new URL('https://hubcloud.one/drive/extsel'), {});
+    await hubCloud.extract(ctx, new URL('https://hubcloud.one/drive/extsel'), {});
     expect(callCount).toBe(2); // Only 2 calls: Hop 1 + Hop 2 (no retry)
-    expect(result.length).toBeGreaterThanOrEqual(0);
   });
 
   test('recognizes page with .download-btn as valid content', async () => {
@@ -83,9 +82,8 @@ describe('HubCloud extended download selectors', () => {
     });
     jest.spyOn(fetcher, 'setCookie').mockImplementation(() => { /* noop */ });
 
-    const result = await hubCloud.extract(ctx, new URL('https://hubcloud.one/drive/dlbtn'), {});
+    await hubCloud.extract(ctx, new URL('https://hubcloud.one/drive/dlbtn'), {});
     expect(callCount).toBe(2); // No retry
-    expect(result.length).toBeGreaterThanOrEqual(0);
   });
 });
 

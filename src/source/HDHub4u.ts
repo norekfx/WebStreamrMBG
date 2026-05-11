@@ -26,19 +26,33 @@ const CDN_HOST_TTL = 4 * 60 * 60 * 1000;
 
 let cdnDiscoveredUrl: string | null = null;
 let cdnDiscoveryTs = 0;
+let cdnVerifiedAliveAt = 0;
+export const CDN_VERIFY_INTERVAL = 5 * 60 * 1000;
 
-export function resetCdnCache(): void {
+export function resetCdnCache(): string | undefined {
+  let evictedHost: string | undefined;
+  if (cdnDiscoveredUrl) {
+    try {
+      evictedHost = new URL(cdnDiscoveredUrl).hostname;
+    } catch { /* invalid CDN URL */ }
+  }
   cdnDiscoveredUrl = null;
   cdnDiscoveryTs = 0;
+  cdnVerifiedAliveAt = 0;
+  return evictedHost;
 }
+
+Source.evictionCallbacks.set('hdhub', resetCdnCache);
 
 const EXCLUDED_HREF_PATTERNS = ['gadgetsweb', '4khdhub', 'linksly', 'shareus', 'dood', 'desiupload', 'megaup', 'filepress', 'mediashore', 'ninjastream', 'hubstream'];
 
-/** Canonical identity key for a hub URL — strips ephemeral query params for HubCloud, keeps full href otherwise. */
+/** Canonical identity key — strips ephemeral query params for HubCloud (keeps from_ac), keeps full href otherwise. */
 const getCanonicalKey = (url: URL): string => {
   if (/hubcloud/.test(url.hostname)) {
     const u = new URL(url);
+    const fromAc = u.searchParams.get('from_ac');
     u.search = '';
+    if (fromAc) u.searchParams.set('from_ac', fromAc);
     return u.href;
   }
   return url.href;
@@ -127,6 +141,12 @@ export class HDHub4u extends Source {
     const ep = imdbId.episode;
     const epPadded = String(ep).padStart(2, '0');
     const episodeSelector = [
+      `h3:contains("EP-${epPadded}")`,
+      `h3:contains("EPiSODE ${ep}")`,
+      `h3:contains("EPiSODE ${epPadded}")`,
+      `h3:contains("Episode ${ep}")`,
+      `h3:contains("Episode ${epPadded}")`,
+      `h4:contains("EP-${epPadded}")`,
       `h4:contains("EPiSODE ${ep}")`,
       `h4:contains("E${epPadded} ")`,
       `h4:contains("E${ep} ")`,
@@ -143,8 +163,28 @@ export class HDHub4u extends Source {
     const headingAndAfterHtml = $.html(heading)
       + heading.nextUntil('hr').map((_i, el) => $.html(el)).get().join('');
 
+    // Episode-scoped gadgetsweb links
+    const episodeSection$ = cheerio.load(headingAndAfterHtml);
+    const episodeGadgetHrefs = episodeSection$('a[href*="gadgetsweb"]')
+      .map((_i, el) => episodeSection$(el).attr('href'))
+      .toArray()
+      .filter((h): h is string => !!h);
+
+    // Pack-level gadgetsweb links: inside headings that don't mention any episode
+    const packGadgetHrefs = $('h2:has(a[href*="gadgetsweb"]), h3:has(a[href*="gadgetsweb"]), h4:has(a[href*="gadgetsweb"]), h5:has(a[href*="gadgetsweb"])')
+      .filter((_i, el) => !/EPiSODE\s+\d|EP-\d+|E\d{2}\s|Episode\s+\d/i.test($(el).text()))
+      .find('a[href*="gadgetsweb"]')
+      .map((_i, el) => $(el).attr('href'))
+      .toArray()
+      .filter((h): h is string => !!h);
+
+    const allGadgetHrefs = [...new Set([...episodeGadgetHrefs, ...packGadgetHrefs])];
+
     return [
       ...this.extractHubDriveUrlResults(headingAndAfterHtml, meta),
+      ...(await Promise.all(
+        allGadgetHrefs.map(href => this.handleHubLinks(ctx, new URL(href), pageUrl, meta)),
+      )).flat(),
     ];
   };
 
@@ -287,6 +327,17 @@ export class HDHub4u extends Source {
       const isKnownDead = diedAt && Date.now() - diedAt < Source.DEAD_DOMAIN_TTL;
 
       if (!isKnownDead) {
+        const needsVerify = Date.now() - cdnVerifiedAliveAt >= CDN_VERIFY_INTERVAL;
+        if (Source.isFailing(this.domainKey) || needsVerify) {
+          if (await this.isDomainAlive(ctx, this.fetcher, cdnUrl)) {
+            Source.recordSuccess(this.domainKey);
+            cdnVerifiedAliveAt = Date.now();
+          } else {
+            if (hostname) Source.deadDomains.set(hostname, Date.now());
+            resetCdnCache();
+            return this.probeBaseUrl(ctx, this.fetcher, this.domainKey, this.FALLBACK_CANDIDATES);
+          }
+        }
         try {
           return new URL(cdnUrl);
         } catch {

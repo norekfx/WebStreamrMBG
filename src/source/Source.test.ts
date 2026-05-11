@@ -40,13 +40,10 @@ describe('Source', () => {
 
   beforeEach(() => {
     fetcher = new Fetcher(axios.create(), logger);
+    Source.resetCache();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SourceClass = Source as any;
-    SourceClass.baseUrlCache = new Map();
-    SourceClass.deadDomains = new Map();
-    SourceClass.domainsJsonCache = null;
-    SourceClass.domainsJsonTs = 0;
-    SourceClass.firstFailureAt = new Map();
+    SourceClass.evictionCallbacks = new Map();
   });
 
   test('stats returns something', async () => {
@@ -388,9 +385,9 @@ describe('Source', () => {
     test('recordFailure: first failure sets timestamp but does not evict', () => {
       Source.recordFailure('testkey');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((Source as any).firstFailureAt.has('testkey')).toBe(true);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((Source as any).baseUrlCache.has('testkey')).toBe(false);
+      const SourceClass = Source as any;
+      expect(SourceClass.firstFailureAt.has('testkey')).toBe(true);
+      expect(SourceClass.baseUrlCache.has('testkey')).toBe(false);
     });
 
     test('recordFailure: evicts cache when failures span 5+ minutes', () => {
@@ -420,6 +417,61 @@ describe('Source', () => {
       Source.recordFailure('');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       expect((Source as any).firstFailureAt.size).toBe(0);
+    });
+
+    test('recordFailure: calls eviction callback when evicting cache', () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const SourceClass = Source as any;
+      const callback = jest.fn();
+      SourceClass.evictionCallbacks.set('testkey', callback);
+      SourceClass.firstFailureAt.set('testkey', Date.now() - 5 * 60 * 1000);
+
+      Source.recordFailure('testkey');
+
+      expect(callback).toHaveBeenCalledTimes(1);
+    });
+
+    test('recordFailure: marks evicted hostname as dead when callback returns it', () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const SourceClass = Source as any;
+      SourceClass.evictionCallbacks.set('testkey', () => 'dead.example');
+      SourceClass.firstFailureAt.set('testkey', Date.now() - 5 * 60 * 1000);
+
+      Source.recordFailure('testkey');
+
+      expect(SourceClass.deadDomains.has('dead.example')).toBe(true);
+    });
+
+    test('recordFailure: does not mark dead when callback returns undefined', () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const SourceClass = Source as any;
+      SourceClass.evictionCallbacks.set('testkey', () => undefined);
+      SourceClass.firstFailureAt.set('testkey', Date.now() - 5 * 60 * 1000);
+
+      Source.recordFailure('testkey');
+
+      expect(SourceClass.deadDomains.size).toBe(0);
+    });
+
+    test('recordFailure: does not call eviction callback on first failure', () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const SourceClass = Source as any;
+      const callback = jest.fn();
+      SourceClass.evictionCallbacks.set('testkey', callback);
+
+      Source.recordFailure('testkey');
+
+      expect(callback).not.toHaveBeenCalled();
+    });
+
+    test('recordFailure: no callback when none registered for domainKey', () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const SourceClass = Source as any;
+      SourceClass.firstFailureAt.set('testkey', Date.now() - 5 * 60 * 1000);
+
+      Source.recordFailure('testkey');
+
+      expect(SourceClass.baseUrlCache.has('testkey')).toBe(false);
     });
 
     test('recordSuccess: clears failure timer', () => {

@@ -143,6 +143,7 @@ describe('FourKHDHub', () => {
   let source: FourKHDHub;
 
   beforeEach(() => {
+    Source.resetCache();
     source = new FourKHDHub(new FetcherMock(`${__dirname}/__fixtures__/FourKHDHub`));
   });
 
@@ -221,25 +222,73 @@ describe('FourKHDHub with base URL cached', () => {
   let source: FourKHDHub;
 
   beforeEach(() => {
+    Source.resetCache();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SourceClass = Source as any;
-    SourceClass.baseUrlCache = new Map();
-    SourceClass.deadDomains = new Map();
-    SourceClass.domainsJsonCache = null;
-    SourceClass.domainsJsonTs = 0;
     SourceClass.baseUrlCache.set('4kHDHub', { url: 'https://4khdhub.link/', ts: Date.now() });
 
     source = new FourKHDHub(new FetcherMock(`${__dirname}/__fixtures__/FourKHDHub`));
   });
 
-  test('handles series with season/episode (Dark S01E02)', async () => {
-    const streams = await source['handleInternal'](ctx, 'series', new TmdbId(70523, 1, 2));
-    expect(streams.length).toBeGreaterThanOrEqual(0);
+  test('fetchPageUrl filters by series typeSlug for season queries', async () => {
+    jest.spyOn(source['fetcher'], 'json').mockImplementation(async (_ctx: unknown, url: URL) => {
+      if (url.hostname === 'api.themoviedb.org') return { name: 'Dark', first_air_date: '2017-12-01', original_name: 'Dark' };
+      return {};
+    });
+    jest.spyOn(source['fetcher'], 'text').mockImplementation(async (_ctx: unknown, url: URL) => {
+      if (url.searchParams.has('s')) {
+        return `<html><body>
+          <a class="movie-card" href="https://4khdhub.link/dark-movie-889">
+            <span class="movie-card-title">Dark</span>
+            <span class="movie-card-meta">2017</span>
+          </a>
+          <a class="movie-card" href="https://4khdhub.link/dark-series-889">
+            <span class="movie-card-title">Dark</span>
+            <span class="movie-card-meta">2017</span>
+          </a>
+        </body></html>`;
+      }
+      return '';
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (source as any).fetchPageUrl(ctx, new TmdbId(70523, 1, 2));
+    expect(result?.href).toContain('-series-');
   });
 
-  test('handles movie via handleInternal (Superman)', async () => {
+  test('extracts episode streams from page with episode-item elements', async () => {
+    const pageUrl = new URL('https://4khdhub.link/dark-series-889');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    jest.spyOn(source as any, 'fetchPageUrl').mockResolvedValue(pageUrl);
+    jest.spyOn(source['fetcher'], 'text').mockResolvedValue(`<html><body>
+      <div class="episode-item">
+        <span class="episode-title">S01E02 - Episode</span>
+        <div class="episode-download-item">Episode-02 1080p
+          <a href="https://hubcloud.foo/drive/ep2">Download</a>
+        </div>
+      </div>
+    </body></html>`);
+    jest.spyOn(source['fetcher'], 'head').mockResolvedValue({});
+
+    const streams = await source['handleInternal'](ctx, 'series', new TmdbId(70523, 1, 2));
+    expect(streams.length).toBeGreaterThanOrEqual(1);
+    expect(streams.some(s => s.url.href.includes('hubcloud.foo'))).toBe(true);
+  });
+
+  test('extracts movie streams from page with download-item elements', async () => {
+    const pageUrl = new URL('https://4khdhub.link/superman-2025');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    jest.spyOn(source as any, 'fetchPageUrl').mockResolvedValue(pageUrl);
+    jest.spyOn(source['fetcher'], 'text').mockResolvedValue(`<html><body>
+      <div class="download-item">
+        <span class="file-title">Superman.2025.1080p.mkv</span>
+        <a href="https://hubcloud.foo/drive/super1">HubCloud</a>
+      </div>
+    </body></html>`);
+    jest.spyOn(source['fetcher'], 'head').mockResolvedValue({});
+
     const streams = await source['handleInternal'](ctx, 'movie', new TmdbId(1061474, undefined, undefined));
-    expect(streams.length).toBeGreaterThanOrEqual(0);
+    expect(streams.length).toBeGreaterThanOrEqual(1);
+    expect(streams.some(s => s.url.href.includes('hubcloud.foo'))).toBe(true);
   });
 
   test('returns empty when pageUrl not found', async () => {

@@ -51,6 +51,7 @@ export abstract class Source {
 
   private static firstFailureAt = new Map<string, number>();
   private static readonly FAILURE_EVICTION_WINDOW = 5 * 60 * 1000; // 5 min
+  public static evictionCallbacks = new Map<string, () => string | undefined>();
 
   public static recordFailure(domainKey: string): void {
     if (!domainKey) return;
@@ -63,12 +64,27 @@ export abstract class Source {
     if (now - first >= Source.FAILURE_EVICTION_WINDOW) {
       Source.baseUrlCache.delete(domainKey);
       Source.firstFailureAt.delete(domainKey);
+      const evictedHost = Source.evictionCallbacks.get(domainKey)?.();
+      if (evictedHost) Source.deadDomains.set(evictedHost, Date.now());
     }
+  }
+
+  protected static isFailing(domainKey: string): boolean {
+    return Source.firstFailureAt.has(domainKey);
   }
 
   public static recordSuccess(domainKey: string): void {
     if (!domainKey) return;
     Source.firstFailureAt.delete(domainKey);
+  }
+
+  public static resetCache(): void {
+    sourceResultCache.clear();
+    Source.baseUrlCache.clear();
+    Source.deadDomains.clear();
+    Source.firstFailureAt.clear();
+    Source.domainsJsonCache = null;
+    Source.domainsJsonTs = 0;
   }
 
   public static stats() {
@@ -228,7 +244,7 @@ export abstract class Source {
     }
   }
 
-  private async isDomainAlive(
+  protected async isDomainAlive(
     ctx: Context,
     fetcher: Fetcher,
     candidate: string,

@@ -18,6 +18,13 @@ describe('HDHub4u', () => {
   let source: HDHub4u;
 
   beforeEach(() => {
+    Source.resetCache();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SourceClass = Source as any;
+    SourceClass.evictionCallbacks = new Map();
+    SourceClass.evictionCallbacks.set('hdhub', resetCdnCache);
+    resetCdnCache();
+
     source = new HDHub4u(new FetcherMock(`${__dirname}/__fixtures__/HDHub4u`));
   });
 
@@ -31,13 +38,13 @@ describe('HDHub4u', () => {
     expect(streams).toMatchSnapshot();
   });
 
-  test('handle stranger things s05e01', async () => {
-    const streams = await source.handle(ctx, 'series', new ImdbId('tt4574334', 5, 1));
+  test('handle stranger things s05e05', async () => {
+    const streams = await source.handle(ctx, 'series', new ImdbId('tt4574334', 5, 5));
     expect(streams).toMatchSnapshot();
   });
 
-  test('handle stranger things s05e08', async () => {
-    const streams = await source.handle(ctx, 'series', new ImdbId('tt4574334', 5, 8));
+  test('handle stranger things s05e07', async () => {
+    const streams = await source.handle(ctx, 'series', new ImdbId('tt4574334', 5, 7));
     expect(streams).toMatchSnapshot();
   });
 });
@@ -47,12 +54,11 @@ describe('HDHub4u internal methods', () => {
   let fetcher: Fetcher;
 
   beforeEach(() => {
+    Source.resetCache();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SourceClass = Source as any;
-    SourceClass.baseUrlCache = new Map();
-    SourceClass.deadDomains = new Map();
-    SourceClass.domainsJsonCache = null;
-    SourceClass.domainsJsonTs = 0;
+    SourceClass.evictionCallbacks = new Map();
+    SourceClass.evictionCallbacks.set('hdhub', resetCdnCache);
 
     resetCdnCache();
 
@@ -134,6 +140,107 @@ describe('HDHub4u internal methods', () => {
 
     const results = await source['handlePage'](ctx, pageUrl, imdbId);
     expect(results.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('handlePage for series matches h3 EP-XX heading format', async () => {
+    const pageUrl = new URL('https://new6.hdhub4u.fo/stranger-things');
+    const imdbId = new ImdbId('tt4574334', 5, 8);
+
+    jest.spyOn(fetcher, 'text').mockResolvedValue(`<html><body>
+      <div>Language: Hindi</div>
+      <h3><a href="https://gadgetsweb.xyz/?id=ep8link"><span><strong>EP-08 [FINAL EP]</strong></span></a></h3>
+      <hr>
+    </body></html>`);
+
+    (resolveRedirectUrl as jest.Mock).mockResolvedValue(new URL('https://hubdrive.dad/file/ep8'));
+
+    const results = await source['handlePage'](ctx, pageUrl, imdbId);
+    const hubUrls = results.map(r => r.url.href);
+    expect(hubUrls.some(u => u.includes('hubdrive.dad/file/ep8'))).toBe(true);
+  });
+
+  test('handlePage excludes EP-XX headings from pack gadgetsweb links', async () => {
+    const pageUrl = new URL('https://new6.hdhub4u.fo/stranger-things');
+    const imdbId = new ImdbId('tt4574334', 5, 5);
+
+    jest.spyOn(fetcher, 'text').mockResolvedValue(`<html><body>
+      <div>Language: Hindi</div>
+      <h3><a href="https://gadgetsweb.xyz/?id=ep5link">EP-05</a></h3>
+      <h4><a href="https://gadgetsweb.xyz/?id=packlink">720p Pack</a></h4>
+      <hr>
+    </body></html>`);
+
+    (resolveRedirectUrl as jest.Mock).mockImplementation(async (_ctx: unknown, _fetcher: unknown, url: URL) => {
+      if (url.href.includes('ep5link')) return new URL('https://hubdrive.dad/file/ep5');
+      if (url.href.includes('packlink')) return new URL('https://hubdrive.dad/file/pack');
+      return new URL('https://hubdrive.dad/file/unknown');
+    });
+
+    const results = await source['handlePage'](ctx, pageUrl, imdbId);
+    const hubUrls = results.map(r => r.url.href);
+    expect(hubUrls.some(u => u.includes('hubdrive.dad/file/ep5'))).toBe(true);
+    expect(hubUrls.some(u => u.includes('hubdrive.dad/file/pack'))).toBe(true);
+  });
+
+  test('handlePage for series finds gadgetsweb pack links and episode hub links', async () => {
+    const pageUrl = new URL('https://new6.hdhub4u.fo/stranger-things');
+    const imdbId = new ImdbId('tt4574334', 5, 5);
+
+    jest.spyOn(fetcher, 'text').mockResolvedValue(`<html><body>
+      <div>Language: Hindi</div>
+      <h3><a href="https://gadgetsweb.xyz/?id=pack480p">480p Pack</a></h3>
+      <h4><a href="https://gadgetsweb.xyz/?id=pack1080p">1080p Pack</a></h4>
+      <hr>
+      <h2>Single Episode Links</h2>
+      <hr>
+      <h4>EPiSODE 5</h4>
+      <a href="https://hubdrive.dad/file/ep5-720">720p Drive</a>
+      <a href="https://hubcdn.fans/file/ep5-instant">720p Instant</a>
+      <hr>
+    </body></html>`);
+
+    (resolveRedirectUrl as jest.Mock).mockImplementation(async (_ctx: unknown, _fetcher: unknown, url: URL) => {
+      if (url.href.includes('pack480p')) return new URL('https://hubdrive.dad/file/pack480');
+      if (url.href.includes('pack1080p')) return new URL('https://hubdrive.dad/file/pack1080');
+      return new URL('https://hubdrive.dad/file/unknown');
+    });
+
+    const results = await source['handlePage'](ctx, pageUrl, imdbId);
+    const hubUrls = results.map(r => r.url.href);
+    expect(hubUrls.some(u => u.includes('hubdrive.dad/file/ep5-720'))).toBe(true);
+    expect(hubUrls.some(u => u.includes('hubcdn.fans'))).toBe(true);
+    expect(hubUrls.some(u => u.includes('hubdrive.dad/file/pack480'))).toBe(true);
+    expect(hubUrls.some(u => u.includes('hubdrive.dad/file/pack1080'))).toBe(true);
+  });
+
+  test('handlePage for series scopes gadgetsweb links to requested episode', async () => {
+    const pageUrl = new URL('https://new6.hdhub4u.fo/stranger-things');
+    const imdbId = new ImdbId('tt4574334', 5, 5);
+
+    jest.spyOn(fetcher, 'text').mockResolvedValue(`<html><body>
+      <div>Language: Hindi</div>
+      <h4><a href="https://gadgetsweb.xyz/?id=pack">Pack</a></h4>
+      <hr>
+      <h4>EPiSODE 5</h4>
+      <a href="https://gadgetsweb.xyz/?id=ep5">EP5 Gadget</a>
+      <hr>
+      <h4>EPiSODE 6</h4>
+      <a href="https://gadgetsweb.xyz/?id=ep6">EP6 Gadget</a>
+      <hr>
+    </body></html>`);
+
+    (resolveRedirectUrl as jest.Mock).mockImplementation(async (_ctx: unknown, _fetcher: unknown, url: URL) => {
+      if (url.href.includes('pack')) return new URL('https://hubdrive.dad/file/pack');
+      if (url.href.includes('ep5')) return new URL('https://hubdrive.dad/file/ep5');
+      if (url.href.includes('ep6')) return new URL('https://hubdrive.dad/file/ep6');
+      return new URL('https://hubdrive.dad/file/unknown');
+    });
+
+    const results = await source['handlePage'](ctx, pageUrl, imdbId);
+    const hubUrls = results.map(r => r.url.href);
+    expect(hubUrls.some(u => u.includes('hubdrive.dad/file/pack'))).toBe(true);
+    expect(hubUrls.some(u => u.includes('hubdrive.dad/file/ep5'))).toBe(true);
+    expect(hubUrls.some(u => u.includes('hubdrive.dad/file/ep6'))).toBe(false);
   });
 
   test('handleHubLinks returns hub URL when redirect resolves to hub host', async () => {
@@ -295,6 +402,149 @@ describe('HDHub4u internal methods', () => {
     expect(result.hostname).not.toBe('dead.hdhub4u.limo');
   });
 
+  test('CDN cache is reset when recordFailure evicts baseUrlCache', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SourceClass = Source as any;
+    jest.spyOn(fetcher, 'json').mockResolvedValue({
+      c: btoa('https://dead.hdhub4u.fo'),
+    });
+    jest.spyOn(fetcher, 'head').mockResolvedValue({});
+
+    await source['getBaseUrl'](ctx);
+
+    expect(SourceClass.evictionCallbacks.get('hdhub')).toBe(resetCdnCache);
+
+    SourceClass.firstFailureAt.set('hdhub', Date.now() - 5 * 60 * 1000);
+    Source.recordFailure('hdhub');
+
+    expect(SourceClass.baseUrlCache.has('hdhub')).toBe(false);
+  });
+
+  test('resetCdnCache returns evicted hostname and recordFailure marks it dead', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SourceClass = Source as any;
+    jest.spyOn(fetcher, 'json').mockResolvedValue({
+      c: btoa('https://dead.hdhub4u.fo'),
+    });
+    jest.spyOn(fetcher, 'head').mockResolvedValue({});
+
+    await source['getBaseUrl'](ctx);
+
+    SourceClass.firstFailureAt.set('hdhub', Date.now() - 5 * 60 * 1000);
+    Source.recordFailure('hdhub');
+
+    expect(SourceClass.deadDomains.has('dead.hdhub4u.fo')).toBe(true);
+  });
+
+  test('resetCdnCache returns undefined when CDN cache is empty', () => {
+    expect(resetCdnCache()).toBeUndefined();
+  });
+
+  test('resetCdnCache returns undefined for invalid CDN URL', async () => {
+    jest.spyOn(fetcher, 'json').mockResolvedValue({
+      c: btoa('not-a-valid-url'),
+    });
+    jest.spyOn(fetcher, 'text').mockResolvedValue('<html></html>');
+    jest.spyOn(fetcher, 'head').mockResolvedValue({});
+
+    try {
+      await source['getBaseUrl'](ctx);
+    } catch { /* may throw */ }
+
+    const result = resetCdnCache();
+    expect(result).toBeUndefined();
+  });
+
+  test('getBaseUrl resets CDN cache and falls back when failing domain is dead', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SourceClass = Source as any;
+    SourceClass.firstFailureAt.set('hdhub', Date.now());
+
+    jest.spyOn(fetcher, 'json').mockImplementation(async (_ctx: unknown, url: URL) => {
+      if (url.hostname === 'cdn.hdhub4u.glass') return { c: btoa('https://dead.hdhub4u.fo') };
+      return { hdhub: { name: 'HDHub4u', url: 'https://fallback.hdhub4u.fo' } };
+    });
+    jest.spyOn(fetcher, 'head').mockImplementation(async (_ctx: unknown, url: URL) => {
+      if (url.hostname === 'dead.hdhub4u.fo') throw new Error('ECONNREFUSED');
+      return {};
+    });
+
+    const result = await source['getBaseUrl'](ctx);
+    expect(result.hostname).not.toBe('dead.hdhub4u.fo');
+    expect(SourceClass.deadDomains.has('dead.hdhub4u.fo')).toBe(true);
+  });
+
+  test('getBaseUrl records success when isFailing and CDN domain is alive', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SourceClass = Source as any;
+    SourceClass.firstFailureAt.set('hdhub', Date.now());
+
+    jest.spyOn(fetcher, 'json').mockResolvedValue({
+      c: btoa('https://alive.hdhub4u.fo'),
+    });
+    jest.spyOn(fetcher, 'head').mockResolvedValue({});
+
+    const result = await source['getBaseUrl'](ctx);
+    expect(result.hostname).toBe('alive.hdhub4u.fo');
+    expect(SourceClass.firstFailureAt.has('hdhub')).toBe(false);
+  });
+
+  test('getBaseUrl verifies CDN URL liveness periodically', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SourceClass = Source as any;
+
+    jest.spyOn(fetcher, 'json').mockImplementation(async (_ctx: unknown, url: URL) => {
+      if (url.hostname === 'cdn.hdhub4u.glass') return { c: btoa('https://dead.hdhub4u.fo') };
+      return { hdhub: { name: 'HDHub4u', url: 'https://fallback.hdhub4u.fo' } };
+    });
+    const headSpy = jest.spyOn(fetcher, 'head').mockImplementation(async (_ctx: unknown, url: URL) => {
+      if (url.hostname === 'dead.hdhub4u.fo') throw new Error('ECONNREFUSED');
+      return {};
+    });
+
+    // First call: CDN URL verified alive (isFailing=false, needsVerify=true initially)
+    const result = await source['getBaseUrl'](ctx);
+    expect(result.hostname).not.toBe('dead.hdhub4u.fo');
+    expect(SourceClass.deadDomains.has('dead.hdhub4u.fo')).toBe(true);
+    expect(headSpy).toHaveBeenCalled();
+  });
+
+  test('getBaseUrl skips HEAD check when CDN URL recently verified', async () => {
+    jest.spyOn(fetcher, 'json').mockResolvedValue({
+      c: btoa('https://alive.hdhub4u.fo'),
+    });
+    const headSpy = jest.spyOn(fetcher, 'head').mockResolvedValue({});
+
+    // First call: verifies CDN URL via HEAD
+    const result1 = await source['getBaseUrl'](ctx);
+    expect(result1.hostname).toBe('alive.hdhub4u.fo');
+    const headCallCount = headSpy.mock.calls.length;
+
+    // Second call: CDN URL recently verified, no HEAD needed
+    const result2 = await source['getBaseUrl'](ctx);
+    expect(result2.hostname).toBe('alive.hdhub4u.fo');
+    expect(headSpy.mock.calls.length).toBe(headCallCount);
+  });
+
+  test('getBaseUrl falls back when isFailing and CDN URL is invalid', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SourceClass = Source as any;
+    SourceClass.firstFailureAt.set('hdhub', Date.now());
+
+    jest.spyOn(fetcher, 'json').mockImplementation(async (_ctx: unknown, url: URL) => {
+      if (url.hostname === 'cdn.hdhub4u.glass') return { c: btoa('not-a-url') };
+      return { hdhub: { name: 'HDHub4u', url: 'https://fallback.hdhub4u.fo' } };
+    });
+    jest.spyOn(fetcher, 'head').mockImplementation(async (_ctx: unknown, url: URL) => {
+      if (url.hostname === 'fallback.hdhub4u.fo') return {};
+      throw new Error('ECONNREFUSED');
+    });
+
+    const result = await source['getBaseUrl'](ctx);
+    expect(result.hostname).toBe('fallback.hdhub4u.fo');
+    expect(SourceClass.deadDomains.has('not-a-url')).toBe(false);
+  });
+
   test('fetchPageUrls returns search results without site search', async () => {
     const imdbId = new ImdbId('tt5950044', undefined, undefined);
 
@@ -362,6 +612,40 @@ describe('HDHub4u internal methods', () => {
     expect(results).toHaveLength(1);
   });
 
+  test('handleInternal keeps HubCloud search-recover URLs with different from_ac as separate results', async () => {
+    const imdbId = new ImdbId('tt5950044', undefined, undefined);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    jest.spyOn(source as any, 'fetchPageUrls').mockResolvedValue([
+      new URL('https://new6.hdhub4u.fo/superman-2025'),
+    ]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    jest.spyOn(source as any, 'handlePage').mockResolvedValue([
+      { url: new URL('https://hubcloud.foo/drive/search-recover.php?from_ac=abc123&q=720p'), meta: { countryCodes: [CountryCode.multi] } },
+      { url: new URL('https://hubcloud.foo/drive/search-recover.php?from_ac=def456&q=1080p'), meta: { countryCodes: [CountryCode.multi] } },
+    ]);
+
+    const results = await source['handleInternal'](ctx, 'movie', imdbId);
+    expect(results).toHaveLength(2);
+  });
+
+  test('handleInternal deduplicates HubCloud search-recover URLs with same from_ac', async () => {
+    const imdbId = new ImdbId('tt5950044', undefined, undefined);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    jest.spyOn(source as any, 'fetchPageUrls').mockResolvedValue([
+      new URL('https://new6.hdhub4u.fo/superman-2025'),
+    ]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    jest.spyOn(source as any, 'handlePage').mockResolvedValue([
+      { url: new URL('https://hubcloud.foo/drive/search-recover.php?from_ac=abc123&q=720p'), meta: { countryCodes: [CountryCode.multi] } },
+      { url: new URL('https://hubcloud.foo/drive/search-recover.php?from_ac=abc123&q=720p'), meta: { countryCodes: [CountryCode.multi] } },
+    ]);
+
+    const results = await source['handleInternal'](ctx, 'movie', imdbId);
+    expect(results).toHaveLength(1);
+  });
+
   test('handleInternal keeps different HubCloud paths as separate results', async () => {
     const imdbId = new ImdbId('tt5950044', undefined, undefined);
 
@@ -417,12 +701,11 @@ describe('HDHub4u internal methods', () => {
 
 describe('HDHub4u search fallback', () => {
   beforeEach(() => {
+    Source.resetCache();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SourceClass = Source as any;
-    SourceClass.baseUrlCache = new Map();
-    SourceClass.deadDomains = new Map();
-    SourceClass.domainsJsonCache = null;
-    SourceClass.domainsJsonTs = 0;
+    SourceClass.evictionCallbacks = new Map();
+    SourceClass.evictionCallbacks.set('hdhub', resetCdnCache);
     resetCdnCache();
   });
 
