@@ -111,6 +111,35 @@ describe('ExtractorRegistry', () => {
     expect(stats.urlResultCache).toBeTruthy();
   });
 
+  test('hubcloud+hubdrive produce identical /extract/ URLs via canonical dedup', async () => {
+    // Lazy extractor where mockdrive+mockcloud resolve to same canonical URL
+    class MockHubLazyExtractor extends MockLazyExtractor {
+      public override readonly id = 'mockhublazy';
+      public override readonly label = 'MockHubLazy';
+
+      public override supports(_ctx: Context, url: URL): boolean {
+        return url.host === 'mockdrive.test' || url.host === 'mockcloud.test';
+      }
+
+      public override async normalizeAsync(): Promise<URL> {
+        return new URL('https://mockcloud.test/same-file');
+      }
+    }
+
+    const mockExtractor = new MockHubLazyExtractor(new FetcherMock(`${__dirname}`), logger);
+    const registry = new ExtractorRegistry(logger, [mockExtractor]);
+
+    // Both mockdrive and mockcloud resolve to the same canonical URL (mockcloud.test/same-file)
+    const driveResults = await registry.handle(ctx, new URL('https://mockdrive.test/file/123'), { title: 'test' }, true);
+    const cloudResults = await registry.handle(ctx, new URL('https://mockcloud.test/file/abc'), { title: 'test' }, true);
+
+    // Both produce identical /extract/ URLs — canonical dedup eliminates stream duplicates
+    expect(driveResults).toHaveLength(cloudResults.length);
+    expect(driveResults[0]?.url.href).toBe(cloudResults[0]?.url.href);
+    // The /extract/ URL points to the canonical URL, not the original
+    expect(driveResults[0]?.url.searchParams.get('url')).toBe('https://mockcloud.test/same-file');
+  });
+
   test('deduplicates concurrent extractions for the same canonical URL', async () => {
     // Slow extractor to guarantee both handle() calls overlap
     class SlowMockExtractor extends MockHubExtractor {

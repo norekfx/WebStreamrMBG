@@ -54,7 +54,7 @@ export class ExtractorRegistry {
     if (extractor.lazyExtract && allowLazy && !extractor.viaMediaFlowProxy) {
       const lazyUrlResults = await this.lazyUrlResultCache.get<UrlResult[]>(canonicalUrl.href) ?? [];
       if (lazyUrlResults.length) {
-        return this.buildExtractUrls(ctx, lazyUrlResults, url);
+        return this.buildExtractUrls(ctx, lazyUrlResults, canonicalUrl);
       }
       // Cache miss — fall through to full extraction, then transform to /extract/ URLs
     }
@@ -76,7 +76,7 @@ export class ExtractorRegistry {
       lazyUrlResults.length && allowLazy && !extractor.viaMediaFlowProxy
       && lazyUrlResults.every(urlResult => urlResult.format !== Format.hls) // related to Android issues, e.g. https://github.com/Stremio/stremio-bugs/issues/1574 or https://github.com/Stremio/stremio-bugs/issues/1579
     ) {
-      return this.buildExtractUrls(ctx, lazyUrlResults, url);
+      return this.buildExtractUrls(ctx, lazyUrlResults, canonicalUrl);
     }
 
     // Reuse in-flight extraction if already running for this canonical URL
@@ -93,7 +93,7 @@ export class ExtractorRegistry {
 
       // Lazy-extract: transform direct URLs to /extract/ URLs even on first extraction
       if (extractor.lazyExtract && allowLazy && !extractor.viaMediaFlowProxy) {
-        return this.buildExtractUrls(ctx, urlResults, url);
+        return this.buildExtractUrls(ctx, urlResults, canonicalUrl);
       }
 
       return urlResults;
@@ -141,11 +141,12 @@ export class ExtractorRegistry {
     return urlResults;
   };
 
-  private buildExtractUrls(ctx: Context, urlResults: UrlResult[], originalUrl: URL): UrlResult[] {
+  // Build /extract/ URLs using canonical URL so hubcloud+hubdrive produce identical /extract/ links
+  private buildExtractUrls(ctx: Context, urlResults: UrlResult[], canonicalUrl: URL): UrlResult[] {
     return urlResults.map((urlResult, index) => {
       const extractUrl = new URL(`/${encodeURIComponent(JSON.stringify(ctx.config))}/extract/`, ctx.hostUrl);
       extractUrl.searchParams.set('index', `${index}`);
-      extractUrl.searchParams.set('url', originalUrl.href);
+      extractUrl.searchParams.set('url', canonicalUrl.href);
       return { ...urlResult, url: extractUrl };
     });
   }
