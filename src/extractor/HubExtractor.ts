@@ -25,6 +25,16 @@ interface HubCdnResult {
 /** True CDN (GDrive) vs HubCloud host that would duplicate. */
 const isCdnDirectUrl = (url: URL): boolean => /googleusercontent\.com/.test(url.hostname);
 
+/** FNV-1a hash of URL pathname — unique bingeGroup per CDN link */
+export const cdnHash = (url: URL): string => {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < url.pathname.length; i++) {
+    hash ^= url.pathname.charCodeAt(i);
+    hash = (hash * 0x01000193) >>> 0;
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0').slice(0, 4);
+};
+
 const DEFAULT_EVICTION_THRESHOLD = 256;
 
 export class HubExtractor extends Extractor {
@@ -118,7 +128,7 @@ export class HubExtractor extends Extractor {
         return [{
           url: result.url,
           format: Format.unknown,
-          meta,
+          meta: { ...meta, extractorId: `hub_cdn_${cdnHash(url)}` },
           label: 'HubCloud (CDN)',
         }];
       } catch {

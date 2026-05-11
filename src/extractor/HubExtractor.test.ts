@@ -4,7 +4,7 @@ import { CountryCode, Meta } from '../types';
 import { DEAD_HUBCLOUD_HOSTS, FetcherMock } from '../utils';
 import { ExtractorRegistry } from './ExtractorRegistry';
 import { HubCloud } from './HubCloud';
-import { HubExtractor } from './HubExtractor';
+import { cdnHash, HubExtractor } from './HubExtractor';
 
 const logger = winston.createLogger({ transports: [new winston.transports.Console({ level: 'nope' })] });
 
@@ -479,6 +479,41 @@ describe('HubExtractor metadata enrichment', () => {
     const passedMeta = (spy.mock.calls[0] as [unknown, unknown, Meta])[2];
     // HubDrive page has no countryCodes, so only source countryCodes should be present
     expect(passedMeta.countryCodes).toEqual([CountryCode.en]);
+  });
+});
+
+describe('cdnHash', () => {
+  test('deterministic — same URL always produces same hash', () => {
+    const url = new URL('https://hubcdn.org/file/5WRy6SEaWjzvnaBEW7rvl9ZDt');
+    expect(cdnHash(url)).toBe(cdnHash(url));
+  });
+
+  test('unique — different URLs produce different hashes', () => {
+    const hash1 = cdnHash(new URL('https://hubcdn.org/file/5WRy6SEaWjzvnaBEW7rvl9ZDt'));
+    const hash2 = cdnHash(new URL('https://hubcdn.org/file/HUsgKLgpvOrxZyefzCDoA6MjO'));
+    expect(hash1).not.toBe(hash2);
+  });
+
+  test('returns 4 hex chars', () => {
+    const hash = cdnHash(new URL('https://hubcdn.org/file/testcode123'));
+    expect(hash).toMatch(/^[0-9a-f]{4}$/);
+  });
+});
+
+describe('HubExtractor CDN extractorId', () => {
+  const extractor = new HubExtractor(new FetcherMock(hubExtractorFixtureBase), logger);
+  const registry = new ExtractorRegistry(logger, [extractor]);
+
+  test('CDN direct result has hub_cdn_ extractorId', async () => {
+    const result = await registry.handle(ctx, new URL('https://hubcdn.fans/file/testcode123'));
+    expect(result).toHaveLength(1);
+    expect(result[0]?.meta?.extractorId).toMatch(/^hub_cdn_[0-9a-f]{4}$/);
+  });
+
+  test('different hubcdn URLs produce different extractorIds', async () => {
+    const r1 = await registry.handle(ctx, new URL('https://hubcdn.fans/file/testcode123'));
+    const r2 = await registry.handle(ctx, new URL('https://hubcdn.fans/file/fallbackcode456'));
+    expect(r1[0]?.meta?.extractorId).not.toBe(r2[0]?.meta?.extractorId);
   });
 });
 
