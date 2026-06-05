@@ -10,7 +10,7 @@ export class VidSrc extends Source {
 
   public readonly contentTypes: ContentType[] = ['movie', 'series'];
 
-  public readonly countryCodes: CountryCode[] = [CountryCode.multi];
+  public readonly countryCodes: CountryCode[] = [CountryCode.multi, CountryCode.pl];
 
   public readonly baseUrl = 'https://vidsrcme.ru';
 
@@ -19,6 +19,6 @@ export class VidSrc extends Source {
       ? new URL(`/embed/tv/${id.id}/${id.season}-${id.episode}`, this.baseUrl)
       : new URL(`/embed/movie/${id.id}`, this.baseUrl);
 
-    return [{ url, meta: { countryCodes: [CountryCode.multi] } }];
+    return [{ url, meta: { countryCodes: [CountryCode.multi, CountryCode.pl] } }];
   };
 }
