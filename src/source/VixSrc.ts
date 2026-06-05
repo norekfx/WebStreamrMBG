@@ -10,7 +10,7 @@ export class VixSrc extends Source {
 
   public readonly contentTypes: ContentType[] = ['movie', 'series'];
 
-  public readonly countryCodes: CountryCode[] = [CountryCode.multi];
+  public readonly countryCodes: CountryCode[] = [CountryCode.multi, CountryCode.pl];
 
   public readonly baseUrl = 'https://vixsrc.to';
 
@@ -41,6 +41,6 @@ export class VixSrc extends Source {
       ? new URL(`/tv/${tmdbId.id}/${tmdbId.season}/${tmdbId.episode}`, this.baseUrl)
       : new URL(`/movie/${tmdbId.id}`, this.baseUrl);
 
-    return [{ url, meta: { title } }];
+    return [{ url, meta: { title, countryCodes: [CountryCode.multi, CountryCode.pl] } }];
   };
 }
