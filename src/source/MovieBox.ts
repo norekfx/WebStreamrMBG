@@ -48,7 +48,7 @@ export class MovieBox extends Source {
 
   public readonly contentTypes: ContentType[] = ['movie', 'series'];
 
-  public readonly countryCodes: CountryCode[] = [CountryCode.multi];
+  public readonly countryCodes: CountryCode[] = [CountryCode.multi, CountryCode.pl];
 
   public readonly baseUrl = 'https://moviebox.ph';
 
@@ -96,7 +96,7 @@ export class MovieBox extends Source {
     return [{
       url: downloadUrl,
       meta: {
-        countryCodes: [CountryCode.multi],
+        countryCodes: [CountryCode.multi, CountryCode.pl],
         referer: 'https://videodownloader.site/',
         title,
       },
